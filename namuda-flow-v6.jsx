@@ -328,52 +328,360 @@ function FieldProgress({ fields, currentIdx }) {
   );
 }
 
-/* ═══ CORE FIELDS CARD (educational intro — 3 columns with sample data) ═══ */
-function CoreFieldsCard({ onAccept }) {
-  const fields = [
-    { n: "case_id", desc: "The case — the entity that moves through the process", samples: ["PO-2024-00142", "PO-2024-00143", "PO-2024-00144", "PO-2024-00145", "PO-2024-00146", "PO-2024-00147", "PO-2024-00148", "PO-2024-00149", "PO-2024-00150", "PO-2024-00151"] },
-    { n: "activity_name", desc: "The steps — what happens to the case at each point", samples: ["Created", "Free", "Approved", "Sent", "In Process", "Confirmed", "Conf.Chgd", "Received", "Closed", "Blocked"] },
-    { n: "timestamp", desc: "When — how I measure time, speed, and delays", samples: ["2024-08-01 09:12", "2024-08-01 09:15", "2024-08-01 10:30", "2024-08-01 14:22", "2024-08-02 08:05", "2024-08-02 11:40", "2024-08-03 09:00", "2024-08-03 16:18", "2024-08-05 10:22", "2024-08-06 08:45"] },
+/* ═══ CORE FIELDS EDUCATION — animated step-by-step build-up + field selection ═══ */
+function CoreFieldsEducation({ onAccept }) {
+  const [step, setStep] = useState(0); // 0=table, 1=highlight-case, 2=traces, 3=graph, 4=select-fields
+  const [hlRow, setHlRow] = useState(-1);
+  const [graphEdges, setGraphEdges] = useState(0);
+  const [graphNodes, setGraphNodes] = useState(0);
+  const [traceAnim, setTraceAnim] = useState(0);
+  const [fadeOut, setFadeOut] = useState(false);
+  // Field selection state — user maps columns
+  const [selections, setSelections] = useState({ case_id: null, activity: null, timestamp: null });
+
+  const dataColumns = [
+    { n: "case_id", samples: ["PO-2024-00142", "PO-2024-00143", "PO-2024-00144", "PO-2024-00145", "PO-2024-00146", "PO-2024-00147", "PO-2024-00148", "PO-2024-00149", "PO-2024-00150", "PO-2024-00151"] },
+    { n: "activity_name", samples: ["Created", "Free", "Approved", "Sent", "In Process", "Confirmed", "Conf.Chgd", "Received", "Closed", "Blocked"] },
+    { n: "timestamp", samples: ["2024-08-01 09:12", "2024-08-01 09:15", "2024-08-01 10:30", "2024-08-01 14:22", "2024-08-02 08:05", "2024-08-02 11:40", "2024-08-03 09:00", "2024-08-03 16:18", "2024-08-05 10:22", "2024-08-06 08:45"] },
+    { n: "receiving_site", samples: ["PM1", "PN1", "PK3", "PL2", "PM2", "PK1", "PN2", "PL1", "PM3", "PK2"] },
+    { n: "purchase_office", samples: ["DE01", "DE02", "NO01", "SE01", "DE03", "FI01", "DK01", "NO02", "SE02", "DE04"] },
+    { n: "item_group", samples: ["MECH", "ELEC", "RAW", "PACK", "CHEM", "TOOL", "SAFE", "PIPE", "VALV", "INSTR"] },
   ];
-  const [selected, setSelected] = useState(new Set(["case_id", "activity_name", "timestamp"]));
-  const toggle = (n) => setSelected(prev => {
-    const next = new Set(prev);
-    if (next.has(n)) next.delete(n); else next.add(n);
-    return next;
-  });
+
+  const roles = [
+    { key: "case_id", label: "Case ID", desc: "The entity moving through the process", color: "#4f6df5", icon: "◉" },
+    { key: "activity", label: "Activity", desc: "What happened at each step", color: "#e8a040", icon: "▸" },
+    { key: "timestamp", label: "Timestamp", desc: "When each event occurred", color: "#45b080", icon: "◷" },
+  ];
+
+  const events = [
+    { case_id: "PO-142", activity: "Created",   ts: "Aug 1  09:12" },
+    { case_id: "PO-142", activity: "Free",       ts: "Aug 1  09:15" },
+    { case_id: "PO-143", activity: "Created",   ts: "Aug 1  09:30" },
+    { case_id: "PO-142", activity: "Approved",  ts: "Aug 1  10:30" },
+    { case_id: "PO-143", activity: "Free",       ts: "Aug 1  10:45" },
+    { case_id: "PO-144", activity: "Created",   ts: "Aug 1  11:00" },
+    { case_id: "PO-142", activity: "Sent",      ts: "Aug 1  14:22" },
+    { case_id: "PO-143", activity: "Approved",  ts: "Aug 2  08:10" },
+    { case_id: "PO-144", activity: "Free",       ts: "Aug 2  08:30" },
+    { case_id: "PO-142", activity: "Confirmed", ts: "Aug 2  11:40" },
+    { case_id: "PO-143", activity: "Sent",      ts: "Aug 2  14:00" },
+    { case_id: "PO-144", activity: "Approved",  ts: "Aug 3  09:00" },
+    { case_id: "PO-142", activity: "Received",  ts: "Aug 3  16:18" },
+    { case_id: "PO-143", activity: "Confirmed", ts: "Aug 3  16:30" },
+    { case_id: "PO-144", activity: "Sent",      ts: "Aug 4  10:00" },
+    { case_id: "PO-143", activity: "Received",  ts: "Aug 5  10:22" },
+    { case_id: "PO-144", activity: "Confirmed", ts: "Aug 5  14:00" },
+    { case_id: "PO-144", activity: "Received",  ts: "Aug 6  08:45" },
+  ];
+
+  const cases = {
+    "PO-142": ["Created", "Free", "Approved", "Sent", "Confirmed", "Received"],
+    "PO-143": ["Created", "Free", "Approved", "Sent", "Confirmed", "Received"],
+    "PO-144": ["Created", "Free", "Approved", "Sent", "Confirmed", "Received"],
+  };
+
+  const activities = ["Created", "Free", "Approved", "Sent", "Confirmed", "Received"];
+  const graphEdgesDef = [[0,1],[1,2],[2,3],[3,4],[4,5]];
+  const caseColors = { "PO-142": "#4f6df5", "PO-143": "#e8a040", "PO-144": "#45b080" };
+
+  // Step 1: highlight rows for PO-142 one by one
+  useEffect(() => {
+    if (step === 1) {
+      setHlRow(-1);
+      let row = 0;
+      const caseRows = events.map((e, i) => e.case_id === "PO-142" ? i : -1).filter(i => i >= 0);
+      const t = setInterval(() => {
+        if (row < caseRows.length) { setHlRow(caseRows[row]); row++; }
+        else clearInterval(t);
+      }, 400);
+      return () => clearInterval(t);
+    }
+  }, [step]);
+
+  // Step 2: animate traces appearing
+  useEffect(() => {
+    if (step === 2) {
+      setTraceAnim(0);
+      let c = 0;
+      const t = setInterval(() => { c++; setTraceAnim(c); if (c >= 3) clearInterval(t); }, 600);
+      return () => clearInterval(t);
+    }
+  }, [step]);
+
+  // Step 3: animate graph nodes then edges
+  useEffect(() => {
+    if (step === 3) {
+      setGraphNodes(0); setGraphEdges(0);
+      let n = 0;
+      const nt = setInterval(() => { n++; setGraphNodes(n); if (n >= activities.length) { clearInterval(nt); let e = 0; const et = setInterval(() => { e++; setGraphEdges(e); if (e >= graphEdgesDef.length) clearInterval(et); }, 300); } }, 200);
+      return () => clearInterval(nt);
+    }
+  }, [step]);
+
+  // Step 4: auto-select correct fields on mount
+  useEffect(() => {
+    if (step === 4) {
+      setSelections({ case_id: "case_id", activity: "activity_name", timestamp: "timestamp" });
+    }
+  }, [step]);
+
+  const allSelected = selections.case_id && selections.activity && selections.timestamp;
+  const selectedCols = new Set(Object.values(selections).filter(Boolean));
+
+  const handleConfirm = () => {
+    setFadeOut(true);
+    setTimeout(() => onAccept(), 500);
+  };
+
+  const assignRole = (colName, roleKey) => {
+    setSelections(prev => {
+      const next = { ...prev };
+      // Remove this column from any other role
+      for (const k of Object.keys(next)) { if (next[k] === colName) next[k] = null; }
+      next[roleKey] = colName;
+      return next;
+    });
+  };
+
+  const getRoleForCol = (colName) => {
+    for (const [k, v] of Object.entries(selections)) { if (v === colName) return k; }
+    return null;
+  };
+
+  const stepTitles = [
+    "Every process starts as a table of events",
+    "Each case_id is one journey through the process",
+    "Sort by time — each case becomes a trace",
+    "Connect the steps — a process map emerges",
+    "Now, tell me which columns are which",
+  ];
+
+  const stepDescs = [
+    "Three columns are all you need: which case, what happened, and when.",
+    "Follow PO-142 — it's one purchase order moving through each step.",
+    "Group by case, sort by time. Now you can see the path each case takes.",
+    "When many cases follow the same path, the process structure reveals itself.",
+    "I found these columns in your data. Click each column to assign it a role, or confirm my suggestions.",
+  ];
+
+  const nodePositions = activities.map((a, i) => ({ label: a, x: 12 + i * 48, y: 20 }));
+  const totalSteps = 5;
+
   return (
-    <div style={{ width: "100%", maxWidth: 560, padding: "0 24px", animation: "fadeUp 0.4s ease" }}>
+    <div style={{
+      width: "100%", maxWidth: 620, padding: "0 24px",
+      animation: fadeOut ? "none" : "snapIn 0.45s cubic-bezier(0.34,1.56,0.64,1)",
+      opacity: fadeOut ? 0 : 1, transform: fadeOut ? "scale(0.97) translateY(8px)" : "none",
+      transition: fadeOut ? "opacity 0.4s ease, transform 0.4s cubic-bezier(0.4,0,0.2,1)" : "none",
+    }}>
       <div style={{ background: "#fff", borderRadius: 14, boxShadow: "0 2px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.03)", overflow: "hidden" }}>
         <div style={{ padding: "16px 18px 14px" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 12 }}>Core Fields — Building Blocks</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {fields.map(f => {
-              const active = selected.has(f.n);
-              return (
-                <div key={f.n} onClick={() => toggle(f.n)} style={{
-                  flex: 1, padding: "10px 10px 8px", borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
-                  background: active ? "#f0f2ff" : "#fafbfc",
-                  border: active ? "1.5px solid #4f6df5" : "1.5px solid #eceef2",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
-                    <div style={{ width: 14, height: 14, borderRadius: 4, border: active ? "none" : "1.5px solid #d0d5e0", background: active ? "#4f6df5" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {active && <span style={{ color: "#fff", fontSize: 9, fontWeight: 700 }}>✓</span>}
-                    </div>
-                    <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, color: active ? "#4f6df5" : "#1a1d23" }}>{f.n}</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: "#7a8194", lineHeight: 1.4, marginBottom: 8, minHeight: 28 }}>{f.desc}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    {f.samples.map((s, i) => (
-                      <div key={i} style={{ fontFamily: "monospace", fontSize: 9, color: active ? "#5a5f6e" : "#b0b5c0", padding: "1.5px 0", borderBottom: i < f.samples.length - 1 ? "1px solid rgba(0,0,0,0.03)" : "none", transition: "color 0.2s" }}>{s}</div>
-                    ))}
-                  </div>
+          {/* Header */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 4 }}>Core Fields — Building Blocks</div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#1a1d23", marginBottom: 2, transition: "all 0.3s" }}>{stepTitles[step]}</div>
+          <div style={{ fontSize: 11.5, color: "#7a8194", marginBottom: 14, lineHeight: 1.5 }}>{stepDescs[step]}</div>
+
+          {/* Column labels — steps 0 & 1 */}
+          {(step === 0 || step === 1) && (
+            <div style={{ display: "flex", gap: 0, marginBottom: 6 }}>
+              {[
+                { n: "case_id", desc: "Which journey", color: "#4f6df5" },
+                { n: "activity", desc: "What happened", color: "#e8a040" },
+                { n: "timestamp", desc: "When", color: "#45b080" },
+              ].map((col, ci) => (
+                <div key={ci} style={{ flex: ci === 2 ? 1.1 : 1, padding: "6px 8px", background: step === 1 && ci === 0 ? "rgba(79,109,245,0.06)" : "transparent", borderRadius: 6, transition: "background 0.3s" }}>
+                  <div style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: col.color }}>{col.n}</div>
+                  <div style={{ fontSize: 9, color: "#a0a8b8", marginTop: 1 }}>{col.desc}</div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          )}
+
+          {/* Step 0 & 1: Event log table */}
+          {(step === 0 || step === 1) && (
+            <div style={{ maxHeight: 240, overflowY: "auto", border: "1px solid #eceef2", borderRadius: 8, marginBottom: 12 }}>
+              {events.map((e, i) => {
+                const isHl = step === 1 && e.case_id === "PO-142";
+                const isActive = step === 1 && hlRow >= i && e.case_id === "PO-142";
+                return (
+                  <div key={i} style={{
+                    display: "flex", padding: "4px 8px", fontSize: 10, fontFamily: "monospace",
+                    background: isActive ? "rgba(79,109,245,0.08)" : isHl && hlRow < i ? "rgba(79,109,245,0.03)" : i % 2 === 0 ? "#fafbfc" : "#fff",
+                    borderBottom: "1px solid rgba(0,0,0,0.03)",
+                    transition: "background 0.3s",
+                    opacity: step === 1 && e.case_id !== "PO-142" ? 0.35 : 1,
+                  }}>
+                    <span style={{ flex: 1, color: caseColors[e.case_id] || "#5a5f6e", fontWeight: isActive ? 700 : 400 }}>{e.case_id}</span>
+                    <span style={{ flex: 1, color: "#5a5f6e" }}>{e.activity}</span>
+                    <span style={{ flex: 1.1, color: "#a0a8b8" }}>{e.ts}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Step 2: Traces */}
+          {step === 2 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, minHeight: 120 }}>
+              {Object.entries(cases).map(([caseId, acts], ci) => (
+                <div key={caseId} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+                  background: "#fafbfc", borderRadius: 8, border: "1px solid #eceef2",
+                  opacity: ci < traceAnim ? 1 : 0, transform: ci < traceAnim ? "translateX(0)" : "translateX(-10px)",
+                  transition: "all 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+                }}>
+                  <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: caseColors[caseId], minWidth: 48 }}>{caseId}</span>
+                  {acts.map((a, ai) => (
+                    <span key={ai} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{
+                        padding: "3px 7px", borderRadius: 5, fontSize: 9, fontWeight: 600,
+                        background: "#f0f2ff", color: "#4f6df5", border: "1px solid rgba(79,109,245,0.15)",
+                      }}>{a}</span>
+                      {ai < acts.length - 1 && <span style={{ color: "#c0c5d0", fontSize: 10 }}>→</span>}
+                    </span>
+                  ))}
+                </div>
+              ))}
+              {traceAnim >= 3 && (
+                <div style={{ fontSize: 10, color: "#8a8f9e", fontStyle: "italic", padding: "4px 10px", animation: "snapIn 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                  All 3 cases follow the same path — this is the "happy path" variant.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Process graph */}
+          {step === 3 && (
+            <div style={{ marginBottom: 12, padding: "12px 0" }}>
+              <svg width="100%" viewBox="0 0 300 70" style={{ display: "block" }}>
+                {graphEdgesDef.map(([from, to], i) => {
+                  if (i >= graphEdges) return null;
+                  const a = nodePositions[from], b = nodePositions[to];
+                  const ax = a.x + 22, bx = b.x + 22;
+                  return <g key={`e${i}`} style={{ animation: "snapIn 0.3s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    <line x1={ax} y1={a.y + 12} x2={bx} y2={b.y + 12} stroke="#c0c5d0" strokeWidth="1.5" />
+                    <polygon points={`${bx-5},${b.y+9} ${bx-5},${b.y+15} ${bx},${b.y+12}`} fill="#c0c5d0" />
+                    <text x={(ax+bx)/2} y={a.y + 6} textAnchor="middle" fontSize="7" fill="#a0a8b8">3</text>
+                  </g>;
+                })}
+                {activities.map((a, i) => {
+                  if (i >= graphNodes) return null;
+                  const p = nodePositions[i];
+                  return <g key={`n${i}`} style={{ animation: "snapIn 0.25s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                    <rect x={p.x} y={p.y} width={44} height={24} rx="6" fill={i === 0 ? "#e8f0fe" : i === activities.length - 1 ? "#e6f7ee" : "#f0f2ff"} stroke={i === 0 ? "#4f6df5" : i === activities.length - 1 ? "#45b080" : "rgba(79,109,245,0.25)"} strokeWidth="1" />
+                    <text x={p.x + 22} y={p.y + 15} textAnchor="middle" fontSize="7" fontWeight="600" fill="#3a3f4a">{a}</text>
+                  </g>;
+                })}
+              </svg>
+              {graphEdges >= graphEdgesDef.length && (
+                <div style={{ fontSize: 10, color: "#8a8f9e", fontStyle: "italic", padding: "6px 0 0", animation: "snapIn 0.35s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                  Each arrow shows a directly-follows relation — the backbone of process mining.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Field selection */}
+          {step === 4 && (
+            <div style={{ animation: "snapIn 0.4s cubic-bezier(0.34,1.56,0.64,1)" }}>
+              {/* Role badges at top */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {roles.map(r => (
+                  <div key={r.key} style={{
+                    flex: 1, padding: "8px 10px", borderRadius: 8,
+                    background: selections[r.key] ? `${r.color}08` : "#fafbfc",
+                    border: selections[r.key] ? `1.5px solid ${r.color}` : "1.5px solid #eceef2",
+                    transition: "all 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                      <span style={{ fontSize: 11, color: r.color }}>{r.icon}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: r.color }}>{r.label}</span>
+                    </div>
+                    <div style={{ fontSize: 9, color: "#8a8f9e", lineHeight: 1.3 }}>{r.desc}</div>
+                    {selections[r.key] && (
+                      <div style={{ marginTop: 4, fontFamily: "monospace", fontSize: 9, fontWeight: 700, color: r.color, animation: "snapIn 0.25s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                        ✓ {selections[r.key]}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {/* Column cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 12 }}>
+                {dataColumns.map((col) => {
+                  const role = getRoleForCol(col.n);
+                  const roleObj = role ? roles.find(r => r.key === role) : null;
+                  return (
+                    <div key={col.n} style={{
+                      padding: "8px 8px 6px", borderRadius: 8, cursor: "pointer",
+                      background: role ? `${roleObj.color}06` : "#fafbfc",
+                      border: role ? `1.5px solid ${roleObj.color}` : "1.5px solid #eceef2",
+                      transition: "all 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+                      transform: role ? "scale(1)" : "scale(1)",
+                    }}
+                    onMouseEnter={e => { if (!role) e.currentTarget.style.borderColor = "#b0b5c0"; }}
+                    onMouseLeave={e => { if (!role) e.currentTarget.style.borderColor = "#eceef2"; }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: roleObj ? roleObj.color : "#1a1d23" }}>{col.n}</span>
+                        {role && <span style={{ fontSize: 8, fontWeight: 700, color: roleObj.color, background: `${roleObj.color}15`, padding: "1px 5px", borderRadius: 4 }}>{roleObj.label}</span>}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                        {col.samples.slice(0, 5).map((s, i) => (
+                          <div key={i} style={{ fontFamily: "monospace", fontSize: 8.5, color: role ? "#5a5f6e" : "#b0b5c0", padding: "1px 0", transition: "color 0.2s" }}>{s}</div>
+                        ))}
+                      </div>
+                      {/* Role assignment buttons */}
+                      {!role && (
+                        <div style={{ display: "flex", gap: 3, marginTop: 5 }}>
+                          {roles.filter(r => !selections[r.key]).map(r => (
+                            <button key={r.key} onClick={(e) => { e.stopPropagation(); assignRole(col.n, r.key); }}
+                              style={{ padding: "2px 6px", fontSize: 8, fontWeight: 600, background: `${r.color}10`, color: r.color, border: `1px solid ${r.color}30`, borderRadius: 4, cursor: "pointer", transition: "all 0.15s" }}
+                              onMouseEnter={e => { e.currentTarget.style.background = `${r.color}25`; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = `${r.color}10`; }}
+                            >{r.icon} {r.label}</button>
+                          ))}
+                        </div>
+                      )}
+                      {role && (
+                        <button onClick={(e) => { e.stopPropagation(); setSelections(prev => ({ ...prev, [role]: null })); }}
+                          style={{ marginTop: 4, padding: "1px 5px", fontSize: 8, color: "#a0a8b8", background: "transparent", border: "1px solid #e0e3ea", borderRadius: 4, cursor: "pointer" }}
+                        >change</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Navigation */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              {Array.from({ length: totalSteps }).map((_, s) => (
+                <div key={s} style={{
+                  width: s === step ? 18 : 6, height: 6, borderRadius: 3,
+                  background: s === step ? "#4f6df5" : s < step ? "#b0c4ff" : "#e0e3ea",
+                  transition: "all 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+                }} />
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {step > 0 && (
+                <button onClick={() => setStep(s => s - 1)} style={btnG}>← Back</button>
+              )}
+              {step < 3 ? (
+                <button onClick={() => setStep(s => s + 1)} style={btnD}>
+                  {step === 0 ? "Show me a case →" : step === 1 ? "See the traces →" : "Build the map →"}
+                </button>
+              ) : step === 3 && graphEdges >= graphEdgesDef.length ? (
+                <button onClick={() => setStep(4)} style={{ ...btnD, background: "#4f6df5" }}>Got it! Select my fields →</button>
+              ) : step === 4 && allSelected ? (
+                <button onClick={handleConfirm} style={{ ...btnD, background: "#4f6df5", animation: "snapIn 0.3s cubic-bezier(0.34,1.56,0.64,1)" }}>Confirm fields →</button>
+              ) : null}
+            </div>
           </div>
-          <button onClick={onAccept} disabled={selected.size < 3} style={{ ...btnD, width: "100%", marginTop: 14, padding: "9px 18px", opacity: selected.size < 3 ? 0.4 : 1 }}>
-            {selected.size < 3 ? `Select all 3 core fields` : `Confirm core fields →`}
-          </button>
         </div>
       </div>
     </div>
@@ -455,7 +763,15 @@ function DataProfilePanel({ onAccept }) {
   ];
 
   return (
-    <div style={{ ...ps, width: 620, maxHeight: "85vh" }}>
+    <div style={{
+      position: "absolute", top: 16, bottom: 16,
+      right: "calc(50% + 250px)",
+      width: "min(520px, calc(50% - 270px))", background: "#fff", borderRadius: 14,
+      boxShadow: "0 4px 28px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.03)",
+      display: "flex", flexDirection: "column",
+      animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
+      overflow: "hidden", zIndex: 10,
+    }}>
       <div style={{ padding: "20px 24px 0" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1d23", marginBottom: 2 }}>Data Quality Assessment</div>
         <div style={{ fontSize: 11.5, color: "#8a8f9e", marginBottom: 12 }}>Is the data good enough to work with? Review the quality flags and decide which fields to include.</div>
@@ -473,7 +789,7 @@ function DataProfilePanel({ onAccept }) {
           </div>
         </div>
       </div>
-      <div style={{ padding: "0 24px 16px", overflowY: "auto", maxHeight: "65vh" }}>
+      <div style={{ padding: "0 24px 16px", overflowY: "auto", flex: 1 }}>
 
         {/* Two-column: activities + volume */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
@@ -807,7 +1123,7 @@ function JunctionPanel({ onSelect }) {
 }
 
 /* ═══ PROCESS TEASER ═══ */
-function ProcessTeaser({ onClose }) {
+function ProcessTeaser({ onClose, inline }) {
   const nodes = [
     { label: "Start", x: 120, y: 18, w: 50, type: "circle" },
     { label: "Free", x: 80, y: 70, w: 100, count: "215K", color: "#e8a0b8" },
@@ -825,11 +1141,12 @@ function ProcessTeaser({ onClose }) {
 
   return (
     <div style={{
-      position: "absolute", top: 16, right: 16, bottom: 16, width: 320,
-      background: "transparent", borderRadius: 14,
+      ...(inline ? { width: "100%", maxWidth: 360 } : { position: "absolute", top: 16, right: 16, bottom: 16, width: 320 }),
+      background: inline ? "#fff" : "transparent", borderRadius: 14,
       border: "1px solid rgba(160,168,184,0.2)",
+      boxShadow: inline ? "0 4px 24px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.03)" : "none",
       display: "flex", flexDirection: "column",
-      animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
+      animation: inline ? "none" : "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
       overflow: "hidden", zIndex: 8,
     }}>
       <div style={{ padding: "16px 18px 12px", borderBottom: "1px solid rgba(160,168,184,0.15)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -908,7 +1225,7 @@ function ProcessTeaser({ onClose }) {
 /* ═══ STEP MAP ═══ */
 const steps = [
   { id: "data", label: "Connect data", phases: ["intro", "data"] },
-  { id: "fields", label: "Field mapping", phases: ["core-fields", "fields"] },
+  { id: "fields", label: "Field mapping", phases: ["core-fields", "core-fields-reveal", "fields"] },
   { id: "profile", label: "Data quality", phases: ["data-profile"] },
   { id: "context", label: "Process context", phases: ["fact-gathering", "mission-review"] },
   { id: "review", label: "Review context", phases: ["review"] },
@@ -920,8 +1237,8 @@ const steps = [
 
 function StepMap({ phase, onJump, fieldProgress }) {
   const currentIdx = steps.findIndex(s => s.phases.includes(phase));
-  const isFieldPhase = phase === "core-fields" || phase === "fields";
-  const coreFieldsDone = phase === "fields";
+  const isFieldPhase = phase === "core-fields" || phase === "core-fields-reveal" || phase === "fields";
+  const coreFieldsDone = phase === "fields" || phase === "core-fields-reveal";
   return (
     <div style={{
       position: "absolute", top: 16, right: 16, width: 175,
@@ -1040,6 +1357,8 @@ export default function App() {
   const [docVisible, setDocVisible] = useState(true);
   const [goalsDoc, setGoalsDoc] = useState(null);
   const [showProcessTeaser, setShowProcessTeaser] = useState(false);
+  const [showCenterProcess, setShowCenterProcess] = useState(false);
+  const [centerProcessFading, setCenterProcessFading] = useState(false);
   const [qIdx, setQIdx] = useState(0);
   const [fieldIdx, setFieldIdx] = useState(0);
   const [mappedFields, setMappedFields] = useState(() => dimFields.map(f => ({ ...f, confirmed: false, meaning: f.guess })));
@@ -1244,22 +1563,37 @@ export default function App() {
     setFieldIdx(0);
     setMappedFields(dimFields.map(f => ({ ...f, confirmed: false, meaning: f.guess })));
     doThink("loading", 4000, () => {
-      setBlobText("Your data has 3 core fields — these are the building blocks of process mining.\n\nLet me explain what each one means.");
+      setBlobText("Process mining works with just 3 columns. Let me show you how they build a process map — step by step.");
       setPhase("core-fields");
     });
   };
 
   const acceptCoreFields = () => {
+    // Phase 1: Card fades out (handled by CoreFieldsEducation), show "Great!"
+    setPhase("core-fields-reveal");
     setBlobText("Great, now I can see the process!");
-    setTimeout(() => setShowProcessTeaser(true), 600);
+    // Phase 2: Process map emerges in center after a beat
     setTimeout(() => {
-      setShowProcessTeaser(false);
-      setBlobText("Woa, a lot of potential for improvement here. Let's get back to that later.\n\nTo do things right I need more context — I think I understand the dimensional data, but two heads think better than one.");
-      setTimeout(() => {
-        setBlobText("Let's review the dimension fields together — confirming their meaning ensures I interpret patterns correctly.");
-        setPhase("fields");
-      }, 3000);
-    }, 4000);
+      setShowCenterProcess(true);
+    }, 800);
+    // Phase 3: After viewing, blob reacts
+    setTimeout(() => {
+      setBlobText("Woa, a lot to unpack and improve here!");
+    }, 3200);
+    // Phase 4: "But wait, need more context"
+    setTimeout(() => {
+      setBlobText("But wait — I need a bit more context to really get this going.");
+    }, 5500);
+    // Phase 5: Fade out process map, transition to field mapping
+    setTimeout(() => {
+      setCenterProcessFading(true);
+    }, 7500);
+    setTimeout(() => {
+      setShowCenterProcess(false);
+      setCenterProcessFading(false);
+      setBlobText("Let's review the dimension fields together — confirming their meaning helps me interpret patterns correctly.");
+      setPhase("fields");
+    }, 8200);
   };
 
   const acceptProfile = () => {
@@ -1451,6 +1785,8 @@ export default function App() {
         @keyframes docIn { from { opacity:0; transform:translateX(-20px); } to { opacity:1; transform:translateX(0); } }
         @keyframes msgIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
         @keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes snapIn { 0% { opacity:0; transform:translateY(12px) scale(0.95); } 60% { opacity:1; transform:translateY(-2px) scale(1.01); } 100% { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes processEmerge { 0% { opacity:0; transform:scale(0.9) translateY(20px); } 50% { opacity:1; transform:scale(1.02) translateY(-4px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes dp { 0%,100% { opacity:0.3; transform:scale(0.8); } 50% { opacity:1; transform:scale(1.15); } }
         @keyframes riseIn { 0% { opacity:0; transform:translateY(100vh); } 40% { opacity:0.6; } 100% { opacity:1; transform:translateY(0); } }
       `}</style>
@@ -1466,6 +1802,11 @@ export default function App() {
 
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+
+        {/* DATA PROFILE — left side panel */}
+        {panel === "data-profile" && (
+          <DataProfilePanel onAccept={acceptProfile} />
+        )}
 
         {/* DOC PANEL — left during gathering */}
         {hasDoc && !isReview && (
@@ -1541,16 +1882,28 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 8 }}>
-                  <div style={{ marginBottom: -20, transition: "all 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
+                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 8, gap: 2 }}>
+                  <div style={{ marginBottom: -12, transition: "all 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
                     <Blob state={blob} size={blobSz} />
                   </div>
-                  {blobText && <BlobSpeech text={blobText} />}
-                  {blob === "thinking" && !isThink && <div style={{ marginTop: 8 }}><Dots /></div>}
+                  {blobText && <div style={{ marginBottom: 16, minHeight: phase === "fields" ? 70 : undefined }}><BlobSpeech text={blobText} /></div>}
+                  {blob === "thinking" && !isThink && <div style={{ marginTop: 4 }}><Dots /></div>}
                 </div>
-                {/* Core fields educational card */}
+                {/* Core fields educational animation */}
                 {phase === "core-fields" && (
-                  <CoreFieldsCard onAccept={acceptCoreFields} />
+                  <CoreFieldsEducation onAccept={acceptCoreFields} />
+                )}
+                {/* Center process map — emerges after core fields confirmed */}
+                {showCenterProcess && phase === "core-fields-reveal" && (
+                  <div style={{
+                    width: "100%", maxWidth: 500, padding: "0 24px", display: "flex", justifyContent: "center",
+                    animation: centerProcessFading ? "none" : "processEmerge 0.7s cubic-bezier(0.34,1.56,0.64,1)",
+                    opacity: centerProcessFading ? 0 : 1,
+                    transform: centerProcessFading ? "scale(0.95) translateY(10px)" : "none",
+                    transition: centerProcessFading ? "opacity 0.5s ease, transform 0.5s cubic-bezier(0.4,0,0.2,1)" : "none",
+                  }}>
+                    <ProcessTeaser onClose={() => {}} inline />
+                  </div>
                 )}
                 {/* Inline field mapping card */}
                 {phase === "fields" && mappedFields[fieldIdx] && (
@@ -1595,13 +1948,13 @@ export default function App() {
         {showProcessTeaser && !isThink && <ProcessTeaser onClose={() => setShowProcessTeaser(false)} />}
 
         {/* STEP MAP — right side (shift left when teaser is open) */}
-        {hasStarted && !isThink && !isDark && !showProcessTeaser && <StepMap phase={phase} onJump={jumpTo} fieldProgress={(phase === "core-fields" || phase === "fields") ? { fields: mappedFields, currentIdx: fieldIdx } : null} />}
+        {hasStarted && !isThink && !isDark && !showProcessTeaser && !showCenterProcess && <StepMap phase={phase} onJump={jumpTo} fieldProgress={(phase === "core-fields" || phase === "core-fields-reveal" || phase === "fields") ? { fields: mappedFields, currentIdx: fieldIdx } : null} />}
 
         {/* FLOATING PANEL */}
         {panel && !isThink && (
           <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 15 }}>
             {panel === "data" && <DataPanel onSelect={pickData} />}
-            {panel === "data-profile" && <DataProfilePanel onAccept={acceptProfile} />}
+            {/* data-profile now rendered as side panel */}
             {/* FieldPanel removed — field mapping now inline via FieldCard */}
             {panel === "goals" && <GoalsPanel onAccept={acceptGoals} />}
             {panel === "targets" && <TargetsPanel onAccept={acceptTargets} />}
