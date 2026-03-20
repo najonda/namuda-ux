@@ -739,27 +739,126 @@ function MiniLine({ data, width=280, height=60 }) {
   return <canvas ref={ref} style={{ width, height, display: "block" }} />;
 }
 
+/* ═══ SCORE RING ═══ */
+function ScoreRing({ score, size = 80 }) {
+  const ref = useRef(null);
+  const [animScore, setAnimScore] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const target = score;
+    const animate = () => {
+      frame++;
+      const progress = Math.min(1, frame / 40);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setAnimScore(Math.round(target * eased));
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  }, [score]);
+  const r = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (animScore / 100) * circ;
+  const color = animScore >= 70 ? "#45b080" : animScore >= 50 ? "#e8b84a" : "#d4685a";
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#eceef2" strokeWidth="5" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="5"
+          strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(0.16,1,0.3,1), stroke 0.3s" }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color, lineHeight: 1 }}>{animScore}</div>
+        <div style={{ fontSize: 8, color: "#a0a8b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>/ 100</div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ MINI BAR SPARK (tiny inline chart for findings) ═══ */
+function MiniBarSpark({ data, width = 120, height = 32 }) {
+  const max = Math.max(...data);
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      {data.map((v, i) => {
+        const bw = (width - (data.length - 1) * 2) / data.length;
+        const bh = (v / max) * (height - 4);
+        return <rect key={i} x={i * (bw + 2)} y={height - bh} width={bw} height={bh} rx="1.5"
+          fill={i === data.length - 1 ? "#d4685a" : v / max > 0.7 ? "#45b080" : "#e8b84a"}
+          opacity="0.8" />;
+      })}
+    </svg>
+  );
+}
+
 /* ═══ DATA PROFILE PANEL ═══ */
-function DataProfilePanel({ onAccept }) {
+function DataProfilePanel({ onAccept, narrativeStep }) {
+  // narrativeStep drives the AI-guided spotlight sequence:
+  // 0 = panel appearing (just header visible, rest dim)
+  // 1 = score spotlight — hero ring glows
+  // 2 = fields revealed — user can toggle omit/include
+  // 3 = findings spotlight — findings section glows, list appears
+  // 4 = findings expanded — detail view with graphs
+  // 5 = wrapping up — findings collapse, footer appears
+  const step = narrativeStep || 0;
+
   const activities = [
     { l: "Created", v: 91179 }, { l: "Free", v: 85200 }, { l: "Approved", v: 82100 },
     { l: "Sent", v: 78400 }, { l: "In Process", v: 74900 }, { l: "Confirmed", v: 71300 },
     { l: "Conf.Chgd", v: 47400, hl: true }, { l: "Received", v: 68800 }, { l: "Closed", v: 65200 },
   ];
-  const caseVolume = [9800, 9200, 8700, 8100, 7600, 7200, 6800, 6400, 5900, 5500, 5100, 4700];
 
   const [omit, setOmit] = useState(new Set(["item_signal"]));
   const toggle = (f) => setOmit(prev => { const n = new Set(prev); n.has(f) ? n.delete(f) : n.add(f); return n; });
 
   const fields = [
-    { field: "case_id", status: "ok", note: "91,179 unique — no duplicates", canOmit: false },
-    { field: "activity_name", status: "ok", note: "9 distinct values, no nulls", canOmit: false },
-    { field: "timestamp", status: "warn", note: "23,411 duplicate timestamps (25.7%)", canOmit: false },
-    { field: "receiving_site", status: "ok", note: "17 values, no nulls", canOmit: true },
-    { field: "purchase_office", status: "ok", note: "28 values, no nulls", canOmit: true },
-    { field: "item_group", status: "ok", note: "427 values, no nulls", canOmit: true },
-    { field: "selection_code", status: "warn", note: "42% null — may reduce analysis scope", canOmit: true },
-    { field: "item_signal", status: "bad", note: "95% null — recommend omitting", canOmit: true, rec: "omit" },
+    { field: "case_id", status: "ok", pct: 100, note: "91,179 unique — no duplicates", canOmit: false },
+    { field: "activity_name", status: "ok", pct: 100, note: "9 distinct values, no nulls", canOmit: false },
+    { field: "timestamp", status: "warn", pct: 74, note: "25.7% duplicate timestamps", canOmit: false },
+    { field: "receiving_site", status: "ok", pct: 100, note: "17 values, no nulls", canOmit: true },
+    { field: "purchase_office", status: "ok", pct: 100, note: "28 values, no nulls", canOmit: true },
+    { field: "item_group", status: "ok", pct: 98, note: "427 values, 2% null", canOmit: true },
+    { field: "selection_code", status: "warn", pct: 58, note: "42% null — limits analysis", canOmit: true },
+    { field: "item_signal", status: "bad", pct: 5, note: "95% null — recommend omit", canOmit: true, rec: "omit" },
+  ];
+
+  const included = fields.filter(f => !omit.has(f.field));
+  const score = Math.round(included.reduce((a, f) => a + f.pct, 0) / included.length);
+  const passColor = score >= 70 ? "#45b080" : score >= 50 ? "#e8b84a" : "#d4685a";
+
+  const scoreSpotlight = step === 1;
+  const fieldsVisible = step >= 2;
+  const findingsSpotlight = step >= 3;
+  const findingsExpanded = step >= 4;
+  const footerVisible = step >= 2;
+
+  // Scroll to findings when spotlight hits
+  const findingsRef = useRef(null);
+  const scrollRef = useRef(null);
+  useEffect(() => {
+    if (step === 3 && findingsRef.current && scrollRef.current) {
+      setTimeout(() => {
+        findingsRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
+  }, [step]);
+
+  const findings = [
+    { id: "dup-ts", severity: "Medium", sevColor: "#e8b84a", title: "Duplicate timestamps",
+      desc: "25.7% of events share identical timestamps, masking true process sequences.",
+      affected: "23,411 events", impact: "Throughput accuracy",
+      detail: "When multiple activities share the same timestamp, the directly-follows relation becomes ambiguous. This affects 1 in 4 events in your data.",
+      sparkData: [92, 88, 85, 80, 76, 72, 68, 48] },
+    { id: "null-signal", severity: "High", sevColor: "#d4685a", title: "item_signal is deprecated",
+      desc: "95% null values — this field adds noise without analytical value.",
+      affected: "86,620 events", impact: "Analysis noise",
+      detail: "Only 4,559 events have a value. The field appears to have been abandoned mid-migration. Recommend omitting.",
+      sparkData: [5, 5, 4, 6, 5, 3, 4, 95] },
+    { id: "null-selection", severity: "Medium", sevColor: "#e8b84a", title: "selection_code gaps",
+      desc: "42% null values correlate with manual orders — fixing this unlocks automation analysis.",
+      affected: "38,295 events", impact: "Segmentation depth",
+      detail: "Orders without a selection_code can't be routed automatically. This is likely a data entry gap at order creation time.",
+      sparkData: [58, 62, 55, 60, 58, 54, 52, 42] },
   ];
 
   return (
@@ -772,69 +871,120 @@ function DataProfilePanel({ onAccept }) {
       animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
       overflow: "hidden", zIndex: 10,
     }}>
-      <div style={{ padding: "20px 24px 0" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1d23", marginBottom: 2 }}>Data Quality Assessment</div>
-        <div style={{ fontSize: 11.5, color: "#8a8f9e", marginBottom: 12 }}>Is the data good enough to work with? Review the quality flags and decide which fields to include.</div>
-
-        {/* Summary verdict — top */}
-        <div style={{ padding: "10px 14px", background: omit.size > 0 ? "#f0faf0" : "#faf8f0", borderRadius: 8, border: `1px solid ${omit.size > 0 ? "#d0e8d0" : "#ede8d8"}`, marginBottom: 16 }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, color: omit.size > 0 ? "#4a8a4a" : "#b8a060", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 4 }}>
-            {omit.size > 0 ? "Ready to proceed" : "Review recommended"}
+      {/* ── Hero: Score Ring + Verdict ── */}
+      <div style={{
+        padding: "20px 24px 16px", borderBottom: "1px solid #eceef2",
+        transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
+        background: scoreSpotlight ? "linear-gradient(135deg, #f0faf0 0%, #e8f8e8 100%)" : "#fff",
+        boxShadow: scoreSpotlight ? "inset 0 -2px 12px rgba(69,176,128,0.08)" : "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <div style={{
+            transition: "transform 0.5s cubic-bezier(0.34,1.56,0.64,1)",
+            transform: scoreSpotlight ? "scale(1.1)" : "scale(1)",
+          }}>
+            <ScoreRing score={step >= 1 ? score : 0} size={76} />
           </div>
-          <div style={{ fontSize: 11.5, color: "#5a5040", lineHeight: 1.55 }}>
-            {omit.size > 0
-              ? `${fields.length - omit.size} of ${fields.length} fields included. ${omit.size} field${omit.size > 1 ? "s" : ""} omitted (${[...omit].join(", ")}). Core fields look solid.`
-              : "item_signal is 95% null and will likely add noise. Consider omitting it before proceeding."
-            }
-          </div>
-        </div>
-      </div>
-      <div style={{ padding: "0 24px 16px", overflowY: "auto", flex: 1 }}>
-
-        {/* Two-column: activities + volume */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 18 }}>
-          <div>
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8 }}>Activities ({activities.length})</div>
-            <HBar data={activities} />
-          </div>
-          <div>
-            <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8 }}>Case Volume — 91,179 total</div>
-            <div style={{ background: "#f7f8fa", borderRadius: 10, padding: "12px 12px 6px" }}>
-              <MiniLine data={caseVolume} width={260} height={64} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#a0a8b8", marginTop: 2 }}>
-                <span>Aug '24</span><span>Aug '25</span>
-              </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1d23", marginBottom: 2 }}>Data Quality Assessment</div>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, marginBottom: 6,
+              opacity: step >= 1 ? 1 : 0, transition: "opacity 0.4s ease 0.3s",
+            }}>
+              <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 700, background: `${passColor}15`, color: passColor }}>
+                {score >= 70 ? "Pass" : score >= 50 ? "Review" : "Fail"}
+              </span>
+              <span style={{ fontSize: 11, color: "#8a8f9e" }}>{included.length} of {fields.length} fields included</span>
+            </div>
+            <div style={{
+              fontSize: 11, color: "#7a8194", lineHeight: 1.45,
+              opacity: step >= 1 ? 1 : 0, transition: "opacity 0.4s ease 0.5s",
+            }}>
+              {score >= 70 ? "Data quality is strong. Ready for deep analysis." : "Some fields have quality issues. Review and decide which to include."}
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Field quality — main evaluation */}
-        <div style={{ marginBottom: 14 }}>
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "14px 24px 16px" }}>
+
+        {/* ── Volume Stats ── */}
+        <div style={{
+          display: "flex", gap: 10, marginBottom: 16,
+          opacity: step >= 1 ? 1 : 0.15, transition: "opacity 0.5s ease 0.2s",
+        }}>
+          {[
+            { label: "Cases", value: "91,179", sub: "12 months" },
+            { label: "Events", value: "624,800", sub: "6.9 per case" },
+            { label: "Activities", value: "9", sub: "distinct" },
+            { label: "Variants", value: "1,175", sub: "process paths" },
+          ].map((s, i) => (
+            <div key={i} style={{ flex: 1, padding: "10px 10px", background: "#f8f9fb", borderRadius: 8, border: "1px solid #eceef2" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1d23", letterSpacing: "-0.3px" }}>{s.value}</div>
+              <div style={{ fontSize: 9.5, fontWeight: 600, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</div>
+              <div style={{ fontSize: 9, color: "#b0b5c0", marginTop: 1 }}>{s.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Activity Distribution (compact) ── */}
+        <div style={{
+          marginBottom: 16,
+          opacity: step >= 1 ? 1 : 0.15, transition: "opacity 0.5s ease 0.4s",
+        }}>
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 6 }}>Activity Distribution</div>
+          <div style={{ display: "flex", gap: 2, height: 28, borderRadius: 6, overflow: "hidden" }}>
+            {activities.map((a, i) => {
+              const max = activities[0].v;
+              const w = (a.v / max) * 100;
+              return (
+                <div key={i} title={`${a.l}: ${(a.v/1000).toFixed(1)}K`} style={{
+                  width: `${w}%`, height: "100%",
+                  background: a.hl ? "#e8b84a" : `hsl(${220 + i * 5}, 25%, ${76 - i * 2}%)`,
+                  transition: "width 0.5s ease",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {w > 8 && <span style={{ fontSize: 7.5, fontWeight: 600, color: "#fff", whiteSpace: "nowrap" }}>{a.l}</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+            <span style={{ fontSize: 9, color: "#b0b5c0" }}>9 activities</span>
+            <span style={{ fontSize: 9, color: "#e8b84a", fontWeight: 600 }}>Conf.Chgd is anomalous</span>
+          </div>
+        </div>
+
+        {/* ── Field Quality Bars ── */}
+        <div style={{
+          marginBottom: 16,
+          opacity: fieldsVisible ? 1 : 0.15,
+          transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 6 }}>Field Quality</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {fields.map((d, i) => {
               const isOmitted = omit.has(d.field);
+              const barColor = isOmitted ? "#d0d0d0" : d.status === "ok" ? "#45b080" : d.status === "warn" ? "#e8b84a" : "#d4685a";
               return (
                 <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "7px 10px",
-                  background: isOmitted ? "#f5f5f5" : "#fafbfc", borderRadius: 6,
-                  borderLeft: `3px solid ${isOmitted ? "#d0d0d0" : d.status === "ok" ? "#7bc67e" : d.status === "warn" ? "#e8b84a" : "#d4685a"}`,
-                  opacity: isOmitted ? 0.5 : 1, transition: "all 0.2s",
+                  display: "flex", alignItems: "center", gap: 6, padding: "4px 8px",
+                  borderRadius: 5, background: isOmitted ? "#f5f5f5" : "#fafbfc",
+                  opacity: isOmitted ? 0.45 : 1, transition: "all 0.2s",
                 }}>
-                  <span style={{ fontSize: 10, width: 14, textAlign: "center", flexShrink: 0 }}>{d.status === "ok" ? "✓" : d.status === "warn" ? "⚠" : "✗"}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 11, color: "#3a3f4a", fontWeight: 600, minWidth: 110, flexShrink: 0 }}>{d.field}</span>
-                  <span style={{ fontSize: 11, color: "#7a8194", flex: 1 }}>{d.note}</span>
-                  {d.canOmit && (
+                  <span style={{ fontFamily: "monospace", fontSize: 10, color: "#3a3f4a", fontWeight: 600, width: 100, flexShrink: 0 }}>{d.field}</span>
+                  <div style={{ flex: 1, height: 8, background: "#eceef2", borderRadius: 4, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: fieldsVisible ? `${d.pct}%` : "0%", background: barColor, borderRadius: 4, transition: "width 0.8s cubic-bezier(0.16,1,0.3,1)" }} />
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: barColor, width: 30, textAlign: "right", flexShrink: 0 }}>{d.pct}%</span>
+                  {d.canOmit && fieldsVisible && (
                     <button onClick={() => toggle(d.field)} style={{
-                      padding: "2px 8px", fontSize: 9.5, fontWeight: 600, flexShrink: 0,
+                      padding: "1px 6px", fontSize: 8.5, fontWeight: 600, flexShrink: 0,
                       background: isOmitted ? "#eceef2" : "transparent",
                       color: isOmitted ? "#7a8194" : "#d4685a",
                       border: `1px solid ${isOmitted ? "#d0d5e0" : "#e8c8c4"}`,
-                      borderRadius: 4, cursor: "pointer",
+                      borderRadius: 3, cursor: "pointer",
                     }}>{isOmitted ? "Include" : "Omit"}</button>
-                  )}
-                  {d.rec === "omit" && !isOmitted && (
-                    <span style={{ fontSize: 9, color: "#d4685a", fontWeight: 600, flexShrink: 0 }}>rec: omit</span>
                   )}
                 </div>
               );
@@ -842,9 +992,101 @@ function DataProfilePanel({ onAccept }) {
           </div>
         </div>
 
+        {/* ── Findings Section ── */}
+        <div ref={findingsRef} style={{
+          padding: findingsSpotlight ? "16px 16px" : "12px 16px", borderRadius: 12,
+          background: findingsSpotlight ? "linear-gradient(135deg, #f0f2ff 0%, #e8eaff 100%)" : "#f8f9fb",
+          border: findingsSpotlight ? "1.5px solid #b8c4f5" : "1px solid #eceef2",
+          transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
+          boxShadow: findingsSpotlight ? "0 6px 28px rgba(79,109,245,0.12)" : "none",
+          opacity: step >= 3 ? 1 : 0.15,
+        }}>
+          {/* Findings header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: findingsSpotlight ? 12 : 6 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center",
+              background: findingsSpotlight ? "#4f6df5" : "#d0d5e0",
+              transition: "all 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+              transform: findingsSpotlight ? "scale(1)" : "scale(0.9)",
+            }}>
+              <span style={{ fontSize: 14, color: "#fff", fontWeight: 700 }}>!</span>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: findingsSpotlight ? "#2a2e60" : "#5a5f6e", transition: "color 0.4s" }}>Findings</div>
+              <div style={{ fontSize: 9.5, color: "#8a8f9e" }}>The atomic unit of improvement</div>
+            </div>
+            {findingsSpotlight && (
+              <div style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: "#4f6df520", color: "#4f6df5", animation: "snapIn 0.4s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                3 found
+              </div>
+            )}
+          </div>
+
+          {/* Findings list */}
+          {findingsSpotlight && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, animation: "fadeUp 0.5s ease" }}>
+              {findings.map((f, i) => (
+                <div key={f.id} style={{
+                  padding: findingsExpanded ? "12px 14px" : "8px 12px",
+                  background: "#fff", borderRadius: 8,
+                  border: `1px solid ${findingsExpanded ? f.sevColor + "40" : "#e0e3ea"}`,
+                  transition: "all 0.4s cubic-bezier(0.16,1,0.3,1)",
+                  animation: `fadeUp ${0.3 + i * 0.12}s ease`,
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: findingsExpanded ? 6 : 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: f.sevColor }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#1a1d23" }}>{f.title}</span>
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: f.sevColor, background: f.sevColor + "15", padding: "1px 6px", borderRadius: 3 }}>{f.severity}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#5a5f6e", lineHeight: 1.5 }}>{f.desc}</div>
+
+                  {/* Expanded detail with graph */}
+                  {findingsExpanded && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #f0f1f5", animation: "fadeUp 0.4s ease" }}>
+                      <div style={{ fontSize: 10.5, color: "#3a3f4a", lineHeight: 1.55, marginBottom: 8 }}>{f.detail}</div>
+                      <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 8.5, fontWeight: 600, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Completeness trend</div>
+                          <MiniBarSpark data={f.sparkData} width={140} height={28} />
+                        </div>
+                        <div style={{ display: "flex", gap: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 8.5, color: "#a0a8b8" }}>Affected</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: "#5a5f6e" }}>{f.affected}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 8.5, color: "#a0a8b8" }}>Impact</div>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: "#5a5f6e" }}>{f.impact}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!findingsSpotlight && (
+            <div style={{ fontSize: 10.5, color: "#8a8f9e", lineHeight: 1.5 }}>Quality issues become actionable findings.</div>
+          )}
+        </div>
+
       </div>
-      <div style={{ padding: "12px 24px", borderTop: "1px solid #eceef2", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 11, color: "#a0a8b8" }}>{fields.length - omit.size} fields included</div>
+
+      {/* ── Footer ── */}
+      <div style={{
+        padding: "12px 24px", borderTop: "1px solid #eceef2",
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        opacity: footerVisible ? 1 : 0, transition: "opacity 0.4s ease",
+        pointerEvents: footerVisible ? "auto" : "none",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: passColor }} />
+          <span style={{ fontSize: 11, color: "#7a8194" }}>Score: {score}/100</span>
+        </div>
         <button onClick={onAccept} style={btnD}>Looks good →</button>
       </div>
     </div>
@@ -930,13 +1172,33 @@ function ContextScore({ score, onImprove }) {
 }
 
 /* ═══ DOCUMENT PANEL ═══ */
-function DocPanel({ data, onUpdate, onImproveScore }) {
+function DocPanel({ data, onUpdate, onImproveScore, narrativeStep }) {
   if (!data) return null;
+  // narrativeStep drives AI-guided spotlight:
+  // 0 = panel appearing, header visible, rest dim
+  // 1 = score bar spotlight — explain the percentage
+  // 2 = gathering — sections fill in as answers come, score animates
+  // 3 = mission spotlight — glow on mission statement
+  // 4 = all visible (normal mode)
+  const step = narrativeStep || 0;
+  const scoreSpotlight = step === 1;
+  const missionSpotlight = step === 3;
+  const missionRef = useRef(null);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (step === 3 && missionRef.current && scrollRef.current) {
+      setTimeout(() => {
+        missionRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 300);
+    }
+  }, [step]);
+
   return (
     <div style={{
       position: "absolute", top: 16, bottom: 16,
-      left: 16,
-      width: "min(680px, calc(100vw - 500px))", background: "#fff", borderRadius: 14,
+      right: "calc(50% + 250px)",
+      width: "min(520px, calc(50% - 270px))", background: "#fff", borderRadius: 14,
       boxShadow: "0 4px 28px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.03)",
       display: "flex", flexDirection: "column",
       animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
@@ -947,29 +1209,82 @@ function DocPanel({ data, onUpdate, onImproveScore }) {
         <EditableField value={data.processName || "Untitled"} onChange={v => onUpdate({ ...data, processName: v })} style={{ fontSize: 17, fontWeight: 700, color: "#1a1d23", letterSpacing: "-0.3px" }} />
         <EditableField value={data.processType || "Process type"} onChange={v => onUpdate({ ...data, processType: v })} style={{ fontSize: 12, color: "#7a8194", marginTop: 4 }} />
       </div>
-      {data.contextScore != null && <ContextScore score={data.contextScore} onImprove={onImproveScore} />}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px 32px" }}>
-        {data.kpis && data.kpis.length > 0 && <div style={{ marginBottom: 18 }}>
+
+      {/* Context Score Bar — with spotlight */}
+      {data.contextScore != null && (
+        <div style={{
+          transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
+          background: scoreSpotlight ? "linear-gradient(135deg, #f0f2ff 0%, #e8eaff 100%)" : "#fff",
+          boxShadow: scoreSpotlight ? "inset 0 0 16px rgba(79,109,245,0.06)" : "none",
+          transform: scoreSpotlight ? "scale(1.02)" : "scale(1)",
+          borderRadius: scoreSpotlight ? "0 0 8px 8px" : "0",
+        }}>
+          <ContextScore score={data.contextScore} onImprove={step >= 4 ? onImproveScore : null} />
+        </div>
+      )}
+
+      <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 22px 32px" }}>
+        {/* Explanation text — visible during early narrative */}
+        {step >= 1 && step <= 2 && !data.description && (
+          <div style={{
+            padding: "12px 14px", background: "#f8f9fb", borderRadius: 9, border: "1px solid #eceef2",
+            marginBottom: 18, animation: "fadeUp 0.4s ease",
+          }}>
+            <div style={{ fontSize: 11.5, color: "#5a5f6e", lineHeight: 1.6 }}>
+              The context score reflects how well I understand your process. Each answer you give adds knowledge — the higher the score, the sharper my analysis and recommendations.
+            </div>
+          </div>
+        )}
+
+        {data.kpis && data.kpis.length > 0 && <div style={{
+          marginBottom: 18, opacity: step >= 2 ? 1 : 0.15, transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Key Indicators</div>
           {data.kpis.map((k, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < data.kpis.length - 1 ? "1px solid #f0f1f5" : "none" }}>
             <span style={{ fontSize: 12, color: "#5a5f6e" }}>{k.l}</span><span style={{ fontSize: 13, fontWeight: 600, color: "#3a3f4a" }}>{k.v}</span></div>))}</div>}
-        {data.mission && <div style={{ marginBottom: 18 }}>
+
+        {data.mission && <div ref={missionRef} style={{
+          marginBottom: 18,
+          opacity: step >= 3 ? 1 : 0.15, transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#4f6df5", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Mission Statement</div>
-          <div style={{ padding: "12px 14px", background: "#f0f2ff", borderRadius: 9, border: "1px solid #d8ddf5" }}>
-            <div style={{ fontSize: 13.5, color: "#2a2e60", lineHeight: 1.6, fontWeight: 500 }}>{data.mission}</div></div></div>}
-        {data.description && <div style={{ marginBottom: 18 }}>
+          <div style={{
+            padding: missionSpotlight ? "16px 18px" : "12px 14px",
+            background: missionSpotlight ? "linear-gradient(135deg, #f0f2ff 0%, #e8eaff 100%)" : "#f0f2ff",
+            borderRadius: 9,
+            border: missionSpotlight ? "1.5px solid #b8c4f5" : "1px solid #d8ddf5",
+            boxShadow: missionSpotlight ? "0 6px 28px rgba(79,109,245,0.12)" : "none",
+            transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
+            transform: missionSpotlight ? "scale(1.02)" : "scale(1)",
+          }}>
+            <div style={{ fontSize: 13.5, color: "#2a2e60", lineHeight: 1.6, fontWeight: 500 }}>{data.mission}</div>
+          </div>
+        </div>}
+
+        {data.description && <div style={{
+          marginBottom: 18, opacity: step >= 2 ? 1 : 0.15, transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Process Description</div>
           <div style={{ fontSize: 12.5, color: "#3a3f4a", lineHeight: 1.6 }}>{data.description}</div></div>}
-        {data.fieldAnnotations && data.fieldAnnotations.length > 0 && <div style={{ marginBottom: 18 }}>
+
+        {data.fieldAnnotations && data.fieldAnnotations.length > 0 && <div style={{
+          marginBottom: 18, opacity: step >= 2 ? 1 : 0.15, transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Field Context</div>
-          {data.fieldAnnotations.map((f, i) => (<div key={i} style={{ padding: "6px 10px", borderRadius: 5, marginBottom: 3, background: "#f8f9fb", borderLeft: "3px solid #a0a8b8" }}>
+          {data.fieldAnnotations.map((f, i) => (<div key={i} style={{ padding: "6px 10px", borderRadius: 5, marginBottom: 3, background: "#f8f9fb", borderLeft: "3px solid #a0a8b8", animation: "fadeUp 0.4s ease" }}>
             <div style={{ fontFamily: "monospace", fontSize: 11.5, color: "#5a5f6e", fontWeight: 600 }}>{f.field}</div>
             <div style={{ fontSize: 10.5, color: "#7a8194" }}>{f.meaning}</div></div>))}</div>}
-        {data.hypotheses && data.hypotheses.length > 0 && <div style={{ marginBottom: 18 }}>
+
+        {data.hypotheses && data.hypotheses.length > 0 && <div style={{
+          marginBottom: 18, opacity: step >= 2 ? 1 : 0.15, transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Hypotheses</div>
-          {data.hypotheses.map((h, i) => (<div key={i} style={{ padding: "8px 12px", background: "#faf8f0", borderRadius: 7, border: "1px solid #ede8d8", marginBottom: 4 }}>
+          {data.hypotheses.map((h, i) => (<div key={i} style={{ padding: "8px 12px", background: "#faf8f0", borderRadius: 7, border: "1px solid #ede8d8", marginBottom: 4, animation: "fadeUp 0.4s ease" }}>
             <div style={{ fontSize: 12, color: "#5a5040", lineHeight: 1.5 }}>{h}</div></div>))}</div>}
-        {data.goals && <div style={{ marginBottom: 18 }}>
+
+        {data.goals && <div style={{
+          marginBottom: 18, opacity: step >= 2 ? 1 : 0.15, transition: "opacity 0.5s ease",
+        }}>
           <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 5 }}>Goals & Targets</div>
           {data.goals.map((g, j) => (<div key={j} style={{ padding: "9px 12px", border: "1px solid #e8ebf0", borderRadius: 8, marginBottom: 5 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -986,8 +1301,9 @@ function GoalsDocPanel({ data }) {
   if (!data) return null;
   return (
     <div style={{
-      position: "absolute", top: 16, left: 16, bottom: 16,
-      width: 520, background: "#fff", borderRadius: 14,
+      position: "absolute", top: 16, bottom: 16,
+      right: "calc(50% + 250px)",
+      width: "min(520px, calc(50% - 270px))", background: "#fff", borderRadius: 14,
       boxShadow: "0 4px 28px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.03)",
       display: "flex", flexDirection: "column",
       animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
@@ -1359,6 +1675,8 @@ export default function App() {
   const [showProcessTeaser, setShowProcessTeaser] = useState(false);
   const [showCenterProcess, setShowCenterProcess] = useState(false);
   const [centerProcessFading, setCenterProcessFading] = useState(false);
+  const [dqNarrativeStep, setDqNarrativeStep] = useState(0);
+  const [ctxNarrativeStep, setCtxNarrativeStep] = useState(0);
   const [qIdx, setQIdx] = useState(0);
   const [fieldIdx, setFieldIdx] = useState(0);
   const [mappedFields, setMappedFields] = useState(() => dimFields.map(f => ({ ...f, confirmed: false, meaning: f.guess })));
@@ -1401,6 +1719,7 @@ export default function App() {
           { l: "Fastest site (PM1)", v: "7.7 days" }, { l: "Slowest site (PN1)", v: "34.0 days" },
         ],
       }));
+      setCtxNarrativeStep(4);
       setBlobText("Please review the process context, and we will move one step closer to improvements!");
       setPhase("review");
     });
@@ -1410,8 +1729,15 @@ export default function App() {
     const proposedMission = "To have an efficient purchasing process that is uniform across all sales offices.";
     setDocData(prev => ({ ...prev, mission: proposedMission }));
     bumpScore(5);
-    setBlobText(`Based on what you've told me, I now feel confident that this could be the mission statement:\n\n"${proposedMission}"\n\nDo you agree, or have I missed something?`);
-    setPhase("mission-review");
+
+    // Step 3: Spotlight on mission statement
+    setCtxNarrativeStep(3);
+    setBlobText("Based on what you've told me, I can now propose a mission statement.");
+
+    setTimeout(() => {
+      setBlobText(`The mission statement embodies the vision and direction of improvement for the process. We will later split it into actionable goals to be reached.\n\n"${proposedMission}"\n\nDoes my suggestion resonate with you, or should we change something?`);
+      setPhase("mission-review");
+    }, 2500);
   };
 
   const goToDraft = () => {
@@ -1472,7 +1798,7 @@ export default function App() {
 
     } else if (phase === "data-profile") {
       setBlob("thinking");
-      setTimeout(() => { setBlob("waiting"); setBlobText("Review the data profile. Click 'Looks good' when ready."); }, 500);
+      setTimeout(() => { setBlob("waiting"); setBlobText("Take a look at the data quality panel — I'm walking you through it. Click 'Looks good' when ready."); }, 500);
 
     } else if (phase === "fields") {
       setBlob("thinking");
@@ -1599,11 +1925,30 @@ export default function App() {
   const acceptProfile = () => {
     setPanel(null);
     setShowProcessTeaser(true);
+    setCtxNarrativeStep(0);
     setDocData({
       processName: "Purchase-to-Receive", processType: "Procurement", contextScore: 0,
     });
-    setBlobText("Excellent — your data is ready. Now let's build the Process Context.\n\nThis is the intelligence layer that turns raw data into actionable insights. The more I understand about your business, the sharper my analysis.\n\nTake a peek at the process preview on the right. I'll ask a few questions — say 'skip' anytime.");
-    setTimeout(() => { setBlobText(factQs[0].q); setQIdx(0); setPhase("fact-gathering"); }, 3500);
+
+    // Step 0: Introduce the panel
+    setBlobText("Excellent — your data is ready. Now let's build the Process Context.\n\nThis is the intelligence layer that turns raw data into actionable insights.");
+
+    // Step 1: Spotlight on context score bar after 2.5s
+    setTimeout(() => {
+      setCtxNarrativeStep(1);
+      setBlobText("See this progress bar? It reflects how well I understand your process.\n\nRight now it's at 0% — every answer you give adds knowledge. The higher the score, the sharper my analysis and recommendations will be.");
+    }, 2500);
+
+    // Step 2: Start gathering after 7s
+    setTimeout(() => {
+      setCtxNarrativeStep(2);
+      setBlobText("Let's start building that understanding. I'll ask a few questions — say 'skip' anytime.");
+      setTimeout(() => {
+        setBlobText(factQs[0].q);
+        setQIdx(0);
+        setPhase("fact-gathering");
+      }, 2000);
+    }, 7000);
   };
 
   const advanceField = (idx) => {
@@ -1625,10 +1970,50 @@ export default function App() {
 
   const acceptFields = () => {
     setPanel(null); setBlob("thinking");
+    setDqNarrativeStep(0);
     setTimeout(() => {
       setBlob("waiting");
-      setBlobText("Now that I understand your fields, I can give you a proper data quality assessment.\n\nData quality isn't just about completeness — it determines whether I can answer the questions that matter. Missing or unreliable fields create blind spots in the analysis.\n\nReview the assessment and decide which fields to include.");
+      // Step 0: Panel appears, blob introduces
+      setBlobText("This is the data quality report for your data.");
       setPanel("data-profile"); setPhase("data-profile");
+
+      // Step 1: Spotlight score ring after 2s
+      setTimeout(() => {
+        setDqNarrativeStep(1);
+      }, 2000);
+
+      // Blob reacts to score after 3.5s
+      setTimeout(() => {
+        setBlobText("Great, it's a pass! Please review the fields to include.\n\nFields with low quality should be excluded.");
+      }, 3500);
+
+      // Step 2: Reveal fields after 5s
+      setTimeout(() => {
+        setDqNarrativeStep(2);
+      }, 5000);
+
+      // Step 3: Findings intro after 9s
+      setTimeout(() => {
+        setBlobText("Now let me introduce the concept of Findings.");
+        setDqNarrativeStep(3);
+      }, 9000);
+
+      // Blob explains findings after 11s
+      setTimeout(() => {
+        setBlobText("Findings are the lifeforce of improvement in Namuda.\n\nHere you can see the findings related to data quality.");
+      }, 11000);
+
+      // Step 4: Expand findings with detail/graphs after 14s
+      setTimeout(() => {
+        setDqNarrativeStep(4);
+      }, 14000);
+
+      // Blob wraps up after 17s
+      setTimeout(() => {
+        setBlobText("We can work on these together later — I'll put them away for now.\n\nClick 'Looks good' when you're ready to continue.");
+        setDqNarrativeStep(5);
+      }, 17000);
+
     }, 800);
   };
 
@@ -1719,6 +2104,7 @@ export default function App() {
       setPanel("data"); setPhase("data");
     } else if (step.id === "profile") {
       setBlobText("Review the data quality assessment.");
+      setDqNarrativeStep(5); // skip narrative on jump
       setPanel("data-profile"); setPhase("data-profile");
     } else if (step.id === "fields") {
       setBlobText("Review the field mapping.");
@@ -1727,9 +2113,11 @@ export default function App() {
       setPanel("fields"); setPhase("fields");
     } else if (step.id === "context") {
       seedState();
+      setCtxNarrativeStep(4); // skip narrative on jump
       setBlobText(factQs[0].q); setQIdx(0); setPhase("fact-gathering");
     } else if (step.id === "review") {
       seedState();
+      setCtxNarrativeStep(4); // skip narrative on jump
       setBlobText("Please review the process context.");
       setPhase("review");
     } else if (step.id === "goals") {
@@ -1805,12 +2193,12 @@ export default function App() {
 
         {/* DATA PROFILE — left side panel */}
         {panel === "data-profile" && (
-          <DataProfilePanel onAccept={acceptProfile} />
+          <DataProfilePanel onAccept={acceptProfile} narrativeStep={dqNarrativeStep} />
         )}
 
         {/* DOC PANEL — left during gathering */}
         {hasDoc && !isReview && (
-          <DocPanel data={docData} onUpdate={d => setDocData(d)} onImproveScore={() => setBlobText("Tell me more about:\n• What triggers this process?\n• Are there known bottlenecks?\n• What does success look like?")} />
+          <DocPanel data={docData} onUpdate={d => setDocData(d)} onImproveScore={() => setBlobText("Tell me more about:\n• What triggers this process?\n• Are there known bottlenecks?\n• What does success look like?")} narrativeStep={ctxNarrativeStep} />
         )}
 
         {/* GOALS DOC — left during goals/targets phases */}
@@ -1863,7 +2251,7 @@ export default function App() {
 
         {/* BLOB + CHAT column — pushes right when doc is visible */}
         {!isReview && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginLeft: hasDoc ? "min(696px, calc(100vw - 484px))" : hasGoalsDoc ? 536 : 0, marginRight: showProcessTeaser && !isThink ? 352 : 0, transition: "margin 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginRight: showProcessTeaser && !isThink ? 352 : 0, transition: "margin 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
 
             {(isThink || !hasStarted) ? (
               <div style={{
