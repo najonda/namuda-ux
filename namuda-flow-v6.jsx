@@ -1427,36 +1427,90 @@ function MissionControlOverlay() {
 }
 
 /* ═══ CANVAS VIEW — full-screen process mining canvas ═══ */
+/* ═══ SPARKLES ICON (inline SVG) ═══ */
+const SparklesIcon = ({ size = 10, color = "#fff" }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z" fill={color} />
+    <path d="M12 0l.75 2.25L15 3l-2.25.75L12 6l-.75-2.25L9 3l2.25-.75L12 0z" fill={color} opacity="0.6" />
+  </svg>
+);
+
+/* ═══ CANVAS CHAT RESPONSES ═══ */
+const CANVAS_RESPONSES = [
+  { match: /bottleneck|slow|delay/i, text: "Last Confirmation Print is the primary bottleneck -- 35,092 cases with 5.7d average duration. The Approved to Last Confirmation transition alone adds 2.3d. I'd recommend investigating the confirmation approval rules and whether manual steps can be automated." },
+  { match: /rework|loop|repeat/i, text: "Two major rework patterns: (1) Approved self-loop -- 10,009 cases cycling back at 1.5d each, likely re-approvals after spec changes. (2) Blocked to Approved return -- 12,457 cases at 10.1h, suggesting blocked orders require re-approval. Together these add ~3.2 days to average throughput." },
+  { match: /block/i, text: "24,435 cases pass through Blocked (68% of total). The Blocked self-loop (9,826 cases, 7.0h) suggests orders get stuck in repeated blocking cycles. The Blocked to Free return path is rare (15 cases) -- most blocked orders route back through Approved." },
+  { match: /free|start|begin/i, text: "Free is the entry point for 97.9% of cases. Average duration is just 5.5h -- it's not a bottleneck itself. The main split: 84% flow to Approved (happy path), 16% route directly to Blocked." },
+  { match: /approv/i, text: "Approved handles 52,107 cases with 2.0d average duration. The self-loop (10,009 cases, 1.5d) is significant -- orders cycling back for re-approval. This is likely driven by specification changes or vendor modifications after initial approval." },
+  { match: /improv|fix|recommend|action/i, text: "Based on the context, I'd prioritize: (1) Automate the Last Confirmation Print step where possible -- 5.7d is excessive. (2) Reduce Approved self-loops by catching spec changes earlier. (3) Investigate why 16% of orders go directly to Blocked from Free." },
+];
+const CANVAS_DEFAULT_RESPONSE = "I can see the items you've selected. Try asking about bottlenecks, rework loops, blocked orders, or what improvements I'd recommend.";
+
 function CanvasView() {
+  const [aiContext, setAiContext] = useState([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
+  const [hasNotified, setHasNotified] = useState(false);
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const [hoveredEdge, setHoveredEdge] = useState(null);
+  const [aiTyping, setAiTyping] = useState(false);
+  const chatEndRef = useRef(null);
+
+  const addContext = (item) => {
+    setAiContext(prev => {
+      const key = item.type === "node" ? item.label : item.id;
+      if (prev.some(p => (p.type === "node" ? p.label : p.id) === key)) return prev;
+      return [...prev, item];
+    });
+    if (!chatOpen) { setChatOpen(true); setHasNotified(true); }
+  };
+
+  const sendChat = () => {
+    const text = chatInput.trim();
+    if (!text || aiTyping) return;
+    setChatMessages(prev => [...prev, { role: "user", text }]);
+    setChatInput("");
+    setAiTyping(true);
+    setTimeout(() => {
+      const match = CANVAS_RESPONSES.find(r => r.match.test(text));
+      setChatMessages(prev => [...prev, { role: "ai", text: match ? match.text : CANVAS_DEFAULT_RESPONSE }]);
+      setAiTyping(false);
+    }, 800);
+  };
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages, aiTyping]);
+
   const nodes = [
     { id: "start", label: "Start", x: 380, y: 20, w: 56, type: "circle" },
-    { id: "free", label: "Free", x: 310, y: 100, w: 140, h: 38, count: "215,350", color: "#e8a0b8" },
-    { id: "approved", label: "Approved", x: 340, y: 230, w: 130, h: 38, count: "59,759", color: "#b080d0" },
-    { id: "last_conf", label: "Last confirmation ...", x: 280, y: 360, w: 160, h: 38, count: "68,328", color: "#e8a0b8", warn: true },
-    { id: "first_conf", label: "First confirmation ...", x: 440, y: 480, w: 155, h: 38, count: "3,907", color: "#e0c8c0" },
-    { id: "blocked", label: "Blocked", x: 320, y: 590, w: 130, h: 38, count: "3,866", color: "#e0c8c0" },
-    { id: "end", label: "End", x: 250, y: 690, w: 56, type: "circle" },
+    { id: "free", label: "Free", x: 290, y: 100, w: 180, h: 60, count: 35088, avgDuration: "5.5h", isBackbone: true, color: "rgba(99,102,241,0.12)", borderColor: "rgba(99,102,241,0.35)" },
+    { id: "approved", label: "Approved", x: 310, y: 230, w: 180, h: 60, count: 52107, avgDuration: "2.0d", isBackbone: true, color: "rgba(99,102,241,0.18)", borderColor: "rgba(99,102,241,0.45)" },
+    { id: "last_conf", label: "Last Confirmation Print", x: 260, y: 370, w: 200, h: 60, count: 35092, avgDuration: "5.7d", isBackbone: true, bottleneck: true, color: "rgba(239,68,68,0.1)", borderColor: "rgba(239,68,68,0.5)" },
+    { id: "blocked", label: "Blocked", x: 150, y: 500, w: 180, h: 60, count: 24435, avgDuration: "13.5h", color: "#f8fafc", borderColor: "#e2e8f0" },
+    { id: "end", label: "End", x: 330, y: 620, w: 56, type: "circle" },
   ];
 
   const edges = [
-    { from: 0, to: 1, labels: ["215,350"] },
-    { from: 1, to: 2, labels: ["196,746", "10", "610"] },
-    { from: 2, to: 3, labels: ["145,414", "298"] },
-    { from: 3, to: 4, labels: ["39,498", "56,698", "584"] },
-    { from: 4, to: 5, labels: ["3,907", "5", "723"] },
-    { from: 5, to: 6, labels: ["215,597"] },
-    { from: 3, to: 2, rework: true, labels: ["59,759"] },
-    { from: 4, to: 3, rework: true, labels: ["68,328", "495"] },
-    { from: 1, to: 3, labels: ["130", "659"] },
-    { from: 2, to: 5, labels: ["57", "11"] },
+    { from: 0, to: 1, count: 35047, avgDuration: "" },
+    { from: 1, to: 2, count: 29557, avgDuration: "5.2h", isBackbone: true },
+    { from: 2, to: 3, count: 34490, avgDuration: "2.3d", isBackbone: true, isBottleneck: true },
+    { from: 3, to: 5, count: 33473, avgDuration: "" },
+    { from: 1, to: 4, count: 5475, avgDuration: "6.8h" },
+    { from: 4, to: 2, count: 12457, avgDuration: "10.1h" },
+    { from: 2, to: 4, count: 6790, avgDuration: "1.1d" },
+    { from: 4, to: 3, count: 570, avgDuration: "8.3d", isBottleneck: true },
+    { from: 3, to: 4, count: 1535, avgDuration: "5.9d", isBottleneck: true, rework: true },
+    { from: 3, to: 2, count: 84, avgDuration: "1.4d", rework: true },
+    { from: 2, to: 2, count: 10009, avgDuration: "1.5d", isBottleneck: true, selfLoop: true },
+    { from: 4, to: 4, count: 9826, avgDuration: "7.0h", selfLoop: true },
   ];
 
   const kpis = [
-    { l: "Cases", v: "4,820", sub: "220,461" },
-    { l: "Events", v: "16,512", sub: "893,207" },
-    { l: "Activities", v: "5 / 5" },
-    { l: "Conformance", v: "72.45%", sub: "43.78%" },
-    { l: "Throughput", v: "7.05d", sub: "5.61d" },
+    { l: "Cases", v: "35,856" },
+    { l: "Events", v: "893,207" },
+    { l: "Activities", v: "4" },
+    { l: "Conformance", v: "72.45%" },
+    { l: "Throughput", v: "7.05d" },
   ];
 
   const variantData = [
@@ -1486,7 +1540,7 @@ function CanvasView() {
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 3h9M3 1.5v1.5M9 1.5v1.5M1.5 5.25h9v4.5a.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75v-4.5z" stroke="#8a8f9e" strokeWidth="0.9"/></svg>
             Period
           </div>
-          <div style={{ fontSize: 11, color: "#7a8194" }}>Mar 20, 2025 – Mar 20, 2026</div>
+          <div style={{ fontSize: 11, color: "#7a8194" }}>Mar 20, 2025 - Mar 20, 2026</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e", fontWeight: 500 }}>
             sales_office
           </div>
@@ -1496,9 +1550,7 @@ function CanvasView() {
           {kpis.map((k, i) => (
             <div key={i} style={{ textAlign: "center" }}>
               <div style={{ fontSize: 9, color: "#a0a8b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>{k.l}</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1d23" }}>
-                {k.v}{k.sub && <span style={{ fontWeight: 400, color: "#a0a8b8" }}> / {k.sub}</span>}
-              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1d23" }}>{k.v}</div>
             </div>
           ))}
         </div>
@@ -1597,81 +1649,271 @@ function CanvasView() {
         </div>
 
         {/* Center — Process DAG */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", background: "#fafbfc", overflow: "auto" }}>
-          <svg width="800" height="750" viewBox="0 0 800 750" style={{
-            display: "block",
-            animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both",
-          }}>
-            {/* Edges */}
-            {edges.map((e, i) => {
-              const a = nodes[e.from], b = nodes[e.to];
-              const aw = a.w || 56, ah = a.h || (a.type === "circle" ? 28 : 38);
-              const bw = b.w || 56, bh = b.h || (b.type === "circle" ? 28 : 38);
-              const ax = a.x + aw / 2, ay = a.y + ah;
-              const bx = b.x + bw / 2, by = b.y;
-              if (e.rework) {
-                const cx = Math.max(ax, bx) + 80;
+        <div style={{ flex: 1, position: "relative", background: "#fafbfc", overflow: "auto" }}>
+          <div style={{ position: "relative", width: 720, height: 700, margin: "20px auto", animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both" }}>
+            <svg width="720" height="700" viewBox="0 0 720 700" style={{ position: "absolute", inset: 0 }}>
+              {/* Edges (lines only — labels rendered as HTML overlays) */}
+              {edges.map((e, i) => {
+                if (e.selfLoop) return null;
+                const a = nodes[e.from], b = nodes[e.to];
+                const aw = a.w || 56, ah = a.h || (a.type === "circle" ? 28 : 60);
+                const bw = b.w || 56, bh = b.h || (b.type === "circle" ? 28 : 60);
+                const ax = a.x + aw / 2, ay = a.y + ah;
+                const bx = b.x + bw / 2, by = b.y;
+                const stroke = e.isBottleneck ? "#f87171" : e.isBackbone ? "#94a3b8" : "#cbd5e1";
+                const sw = e.isBackbone ? 2.5 : e.isBottleneck ? 2 : 1.5;
+                if (e.rework) {
+                  const cx = Math.max(ax, bx) + 90;
+                  return <path key={`e${i}`} d={`M${ax},${ay} C${cx},${ay} ${cx},${by} ${bx},${by}`}
+                    fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray="6 4" opacity="0.7"
+                    markerEnd="url(#arrowRed)" />;
+                }
                 return <g key={`e${i}`}>
-                  <path d={`M${ax},${ay} C${cx},${ay} ${cx},${by} ${bx},${by}`}
-                    fill="none" stroke="#d0a0a0" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7" />
-                  {e.labels?.[0] && <text x={cx - 15} y={(ay + by) / 2} fontSize="9" fill="#b08080" textAnchor="end">{e.labels[0]}</text>}
+                  <line x1={ax} y1={ay} x2={bx} y2={by} stroke={stroke} strokeWidth={sw} />
+                  <polygon points={`${(ax+bx)/2-4},${(ay+by)/2-3} ${(ax+bx)/2+4},${(ay+by)/2-3} ${(ax+bx)/2},${(ay+by)/2+4}`} fill={stroke} />
                 </g>;
+              })}
+              {/* Self-loop arcs */}
+              {edges.map((e, i) => {
+                if (!e.selfLoop) return null;
+                const n = nodes[e.from];
+                const nx = n.x + (n.w || 56), ny = n.y + (n.h || 60) / 2;
+                const stroke = e.isBottleneck ? "#f87171" : "#c4b5fd";
+                return <path key={`sl${i}`} d={`M${nx},${ny - 14} h22 a18,18 0 0 1 18,18 v0 a18,18 0 0 1 -18,18 h-22`}
+                  fill="none" stroke={stroke} strokeWidth="2" markerEnd={e.isBottleneck ? "url(#arrowRed)" : "url(#arrowPurple)"} />;
+              })}
+              {/* Arrow markers */}
+              <defs>
+                <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171" />
+                </marker>
+                <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b5fd" />
+                </marker>
+              </defs>
+            </svg>
+
+            {/* Edge label pills (HTML overlays) */}
+            {edges.map((e, i) => {
+              if (!e.count || e.from === 0) return null;
+              const a = nodes[e.from], b = nodes[e.to];
+              let px, py;
+              if (e.selfLoop) {
+                px = a.x + (a.w || 56) + 58;
+                py = a.y + (a.h || 60) / 2;
+              } else if (e.rework) {
+                const ax2 = a.x + (a.w || 56) / 2, ay2 = a.y + (a.h || 60);
+                const bx2 = b.x + (b.w || 56) / 2, by2 = b.y;
+                px = Math.max(ax2, bx2) + 80;
+                py = (ay2 + by2) / 2;
+              } else {
+                const ax2 = a.x + (a.w || 56) / 2, ay2 = a.y + (a.h || 60);
+                const bx2 = b.x + (b.w || 56) / 2, by2 = b.y;
+                px = (ax2 + bx2) / 2 + 14;
+                py = (ay2 + by2) / 2 - 4;
               }
-              return <g key={`e${i}`}>
-                <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#c0c5d0" strokeWidth="1.5" />
-                <polygon points={`${(ax+bx)/2-3},${(ay+by)/2-2} ${(ax+bx)/2+3},${(ay+by)/2-2} ${(ax+bx)/2},${(ay+by)/2+3}`} fill="#c0c5d0" />
-                {e.labels && e.labels.map((lbl, li) => (
-                  <text key={li} x={(ax + bx) / 2 + (li - (e.labels.length - 1) / 2) * 45} y={(ay + by) / 2 - 8} fontSize="9" fill="#a0a8b8" textAnchor="middle">{lbl}</text>
-                ))}
-              </g>;
+              const edgeId = `${nodes[e.from].label} > ${nodes[e.to].label}`;
+              const isHovered = hoveredEdge === i;
+              return (
+                <div key={`ep${i}`}
+                  onMouseEnter={() => setHoveredEdge(i)} onMouseLeave={() => setHoveredEdge(null)}
+                  style={{
+                    position: "absolute", left: px, top: py, transform: "translate(-50%, -50%)",
+                    display: "flex", alignItems: "center", gap: 4,
+                    background: e.isBottleneck ? "#fef2f2" : "#fff",
+                    border: `1px solid ${e.isBottleneck ? "#fecaca" : "#e5e7eb"}`,
+                    borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 500,
+                    color: e.isBottleneck ? "#991b1b" : "#64748b",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "default", whiteSpace: "nowrap",
+                    zIndex: isHovered ? 20 : 2,
+                  }}>
+                  {e.isBottleneck && <svg width="8" height="8" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="#dc2626" strokeWidth="1.5" fill="none"/><line x1="8" y1="6" x2="8" y2="10" stroke="#dc2626" strokeWidth="1.5"/><circle cx="8" cy="12" r="0.8" fill="#dc2626"/></svg>}
+                  <span># {e.count.toLocaleString()}</span>
+                  {e.avgDuration && <span style={{ color: e.isBottleneck ? "#dc2626" : "#94a3b8" }}>{e.avgDuration}</span>}
+                  {isHovered && (
+                    <button onClick={(ev) => { ev.stopPropagation(); addContext({ type: "edge", id: edgeId, label: edgeId, count: e.count, avgDuration: e.avgDuration, severity: e.isBottleneck ? "bottleneck" : "none" }); }}
+                      style={{
+                        position: "absolute", top: -7, right: -7, width: 18, height: 18, borderRadius: "50%",
+                        background: "#6366f1", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", boxShadow: "0 2px 6px rgba(99,102,241,0.3)", padding: 0,
+                        animation: "sparkleAppear 0.15s ease",
+                      }} title="Add to AI context">
+                      <SparklesIcon size={8} />
+                    </button>
+                  )}
+                </div>
+              );
             })}
 
-            {/* Nodes */}
+            {/* Activity nodes (HTML overlays with hover sparkles) */}
             {nodes.map((n, i) => {
               if (n.type === "circle") {
-                return <g key={`n${i}`}>
-                  <circle cx={n.x + 28} cy={n.y + 14} r={18} fill="#fff" stroke="#c0c5d0" strokeWidth="1.5" />
-                  <text x={n.x + 28} y={n.y + 18} textAnchor="middle" fontSize="11" fontWeight="600" fill="#5a5f6e">{n.label}</text>
-                </g>;
+                return (
+                  <div key={`n${i}`} style={{
+                    position: "absolute", left: n.x, top: n.y, width: 56, height: 56,
+                    borderRadius: "50%", background: "#1e293b", border: "3px solid #334155",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: "0.8px", textTransform: "uppercase" }}>{n.label}</span>
+                  </div>
+                );
               }
-              const h = n.h || 38;
-              return <g key={`n${i}`}>
-                <rect x={n.x} y={n.y} width={n.w} height={h} rx="8"
-                  fill={n.color || "#e0e2e8"}
-                  stroke={n.warn ? "#d08080" : "rgba(160,168,184,0.3)"}
-                  strokeWidth={n.warn ? "2" : "1"}
-                  strokeDasharray={n.warn ? "4 3" : "none"} />
-                <text x={n.x + n.w / 2} y={n.y + h / 2 - 3} textAnchor="middle" fontSize="11" fontWeight="600" fill="#3a3040">{n.label}</text>
-                {n.count && <text x={n.x + n.w / 2} y={n.y + h / 2 + 11} textAnchor="middle" fontSize="9" fill="#7a7080">{n.count}</text>}
-              </g>;
+              const isHovered = hoveredNode === i;
+              return (
+                <div key={`n${i}`}
+                  onMouseEnter={() => setHoveredNode(i)} onMouseLeave={() => setHoveredNode(null)}
+                  style={{
+                    position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h || 60,
+                    background: n.color || "#f8fafc",
+                    border: `2px solid ${n.borderColor || "#e2e8f0"}`,
+                    borderRadius: 10, padding: "10px 14px",
+                    boxShadow: isHovered ? "0 4px 16px rgba(0,0,0,0.1)" : "0 1px 3px rgba(0,0,0,0.05)",
+                    cursor: "default", transition: "box-shadow 0.15s ease",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                    {n.bottleneck && <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="#dc2626" strokeWidth="1.5" fill="none"/><line x1="8" y1="6" x2="8" y2="10" stroke="#dc2626" strokeWidth="1.5"/><circle cx="8" cy="12" r="0.8" fill="#dc2626"/></svg>}
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: n.bottleneck ? "#991b1b" : "#1e293b", lineHeight: "16px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#64748b", fontWeight: 500 }}>
+                    <span># {n.count.toLocaleString()}</span>
+                    {n.avgDuration && <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#94a3b8" strokeWidth="1.3"/><path d="M8 4.5V8l2.5 1.5" stroke="#94a3b8" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                      {n.avgDuration}
+                    </span>}
+                  </div>
+                  {isHovered && (
+                    <button onClick={(ev) => { ev.stopPropagation(); addContext({ type: "node", label: n.label, count: n.count, avgDuration: n.avgDuration, severity: n.bottleneck ? "bottleneck" : "none" }); }}
+                      style={{
+                        position: "absolute", top: -9, right: -9, width: 24, height: 24, borderRadius: "50%",
+                        background: "#6366f1", border: "2.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer", boxShadow: "0 2px 8px rgba(99,102,241,0.35)", padding: 0, zIndex: 10,
+                        animation: "sparkleAppear 0.15s ease",
+                      }} title="Add to AI context">
+                      <SparklesIcon size={11} />
+                    </button>
+                  )}
+                </div>
+              );
             })}
+          </div>
 
-            {/* Rework annotation */}
-            <text x="620" y="290" fontSize="10" fill="#d08080" fontWeight="600" fontStyle="italic">rework</text>
-            <text x="620" y="302" fontSize="10" fill="#d08080" fontStyle="italic">loop</text>
-          </svg>
-
-          {/* Right side zoom controls */}
-          <div style={{
-            position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
-            display: "flex", flexDirection: "column", gap: 4,
-          }}>
+          {/* Zoom controls */}
+          <div style={{ position: "absolute", left: 20, bottom: 20, display: "flex", flexDirection: "column", gap: 4 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>+</div>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>-</div>
           </div>
-
-          {/* Analyze with AI button */}
-          <div style={{
-            position: "absolute", right: 20, top: 20,
-            padding: "8px 16px", background: "#fff", borderRadius: 8,
-            border: "1px solid #e2e5ea", display: "flex", alignItems: "center", gap: 8,
-            fontSize: 12, fontWeight: 600, color: "#1a1d23", cursor: "pointer",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-          }}>
-            Analyze with AI
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#4f6df5" strokeWidth="1.2"/><path d="M5 7h4M7 5v4" stroke="#4f6df5" strokeWidth="1.2"/></svg>
-          </div>
         </div>
+
+        {/* Right — AI Chat Panel */}
+        {!chatOpen ? (
+          <div onClick={() => { setChatOpen(true); setHasNotified(true); }}
+            style={{
+              width: 48, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e8ebf0",
+              display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16,
+              cursor: "pointer", position: "relative",
+              animation: "slideInLeft 0.4s cubic-bezier(0.16,1,0.3,1) 0.4s both",
+            }}>
+            <div style={{ position: "relative" }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <SparklesIcon size={14} color="#6366f1" />
+              </div>
+              {!hasNotified && (
+                <div style={{
+                  position: "absolute", top: -3, right: -3, width: 10, height: 10, borderRadius: "50%",
+                  background: "#6366f1", border: "2px solid #fff",
+                  animation: "notifyPulse 2s ease infinite, notifyShake 0.5s ease 3s infinite",
+                }} />
+              )}
+            </div>
+            <div style={{ writingMode: "vertical-rl", fontSize: 11, color: "#94a3b8", fontWeight: 500, marginTop: 12, letterSpacing: "0.3px" }}>AI Context</div>
+          </div>
+        ) : (
+          <div style={{
+            width: 340, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e8ebf0",
+            display: "flex", flexDirection: "column", animation: "chatSlideIn 0.3s ease",
+          }}>
+            {/* Chat header */}
+            <div style={{ padding: "12px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <SparklesIcon size={12} color="#6366f1" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>AI Context</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>{aiContext.length} item{aiContext.length !== 1 ? "s" : ""} selected</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {aiContext.length > 0 && (
+                  <button onClick={() => setAiContext([])} style={{ fontSize: 11, color: "#94a3b8", background: "none", border: "none", cursor: "pointer", padding: "4px 6px" }}>Clear all</button>
+                )}
+                <button onClick={() => setChatOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: "#94a3b8", display: "flex" }}>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 5l-4 4M5 5l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Context items */}
+            {aiContext.length > 0 && (
+              <div style={{ padding: "8px 10px", maxHeight: 180, overflowY: "auto", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+                {aiContext.map((item, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 8, marginBottom: 4, background: "#f8fafc", fontSize: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: item.type === "node" ? "#6366f1" : "#0ea5e9", letterSpacing: "0.5px", flexShrink: 0 }}>{item.type}</span>
+                      <span style={{ color: "#334155", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
+                      {item.severity === "bottleneck" && <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#fef2f2", color: "#dc2626", flexShrink: 0 }}>bottleneck</span>}
+                    </div>
+                    <button onClick={() => setAiContext(prev => prev.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "#cbd5e1", display: "flex", flexShrink: 0 }}>
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M4 4l6 6M10 4l-6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Chat messages */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Welcome message */}
+              <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#475569", lineHeight: 1.6, maxWidth: "90%" }}>
+                Click the sparkle icon on any node or edge to add it as context. Then ask me questions about bottlenecks, rework patterns, or improvement opportunities.
+              </div>
+              {chatMessages.map((msg, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
+                  <div style={{
+                    padding: "10px 12px", borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "4px 12px 12px 12px",
+                    background: msg.role === "user" ? "#6366f1" : "#f8fafc",
+                    color: msg.role === "user" ? "#fff" : "#475569",
+                    fontSize: 12, lineHeight: 1.6, maxWidth: "85%",
+                  }}>{msg.text}</div>
+                </div>
+              ))}
+              {aiTyping && (
+                <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#94a3b8", maxWidth: "90%" }}>
+                  <span style={{ animation: "notifyPulse 1s ease infinite" }}>Thinking...</span>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Chat input */}
+            <div style={{ padding: "10px 12px", borderTop: "1px solid #f1f5f9", flexShrink: 0 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#f8fafc", borderRadius: 10, padding: "8px 12px", border: "1px solid #e2e8f0" }}>
+                <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
+                  placeholder="Ask about selected items..."
+                  style={{ flex: 1, border: "none", background: "none", outline: "none", fontSize: 12, color: "#334155" }} />
+                <button onClick={sendChat} style={{
+                  width: 28, height: 28, borderRadius: 8, background: chatInput.trim() ? "#6366f1" : "#e2e8f0",
+                  border: "none", display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: chatInput.trim() ? "pointer" : "default", transition: "background 0.15s ease", flexShrink: 0,
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 8h14M10 3l5 5-5 5" stroke={chatInput.trim() ? "#fff" : "#94a3b8"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom bar */}
@@ -1680,9 +1922,9 @@ function CanvasView() {
         display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 10, color: "#a0a8b8",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span>71.3K</span>
-          <span>314K</span>
-          <div style={{ width: 60, height: 6, background: "linear-gradient(90deg, #f0f2f5, #e8a0b8)", borderRadius: 3 }} />
+          <span>35.9K cases</span>
+          <span>893K events</span>
+          <div style={{ width: 60, height: 6, background: "linear-gradient(90deg, #f0f2f5, #6366f1)", borderRadius: 3 }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span>69%</span>
@@ -2614,6 +2856,10 @@ export default function App() {
         @keyframes slideInLeft { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
         @keyframes slideInDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
         @keyframes mcFadeIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes notifyPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.6; transform:scale(1.4); } }
+        @keyframes notifyShake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-2px); } 40% { transform:translateX(2px); } 60% { transform:translateX(-1px); } 80% { transform:translateX(1px); } }
+        @keyframes chatSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes sparkleAppear { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } }
       `}</style>
 
       {/* Top bar */}
