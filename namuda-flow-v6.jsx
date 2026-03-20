@@ -688,16 +688,68 @@ function CoreFieldsEducation({ onAccept }) {
   );
 }
 
-function GoalsPanel({onAccept}){
-  const gs=[{n:"Reduce throughput time",icon:"⏱"},{n:"Lower rework rate",icon:"🔄"},{n:"Improve data quality",icon:"📊"},{n:"Increase conformance",icon:"📐"}];
-  return<div style={{...ps,width:340}}>
-    <div style={{padding:"18px 22px 0"}}><div style={{fontSize:14,fontWeight:700,color:"#1a1d23",marginBottom:4}}>Suggested Goals</div>
-    <div style={{fontSize:11.5,color:"#8a8f9e",marginBottom:14}}>Areas with the most room for improvement.</div></div>
-    <div style={{padding:"0 22px",maxHeight:280,overflowY:"auto"}}>{gs.map((g,i)=><div key={i} style={{padding:"11px 14px",border:"1.5px solid #e8ebf0",borderRadius:9,marginBottom:6,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:16}}>{g.icon}</span>
-      <div style={{fontSize:13,fontWeight:600,color:"#1a1d23"}}>{g.n}</div>
-    </div>)}</div>
-    <div style={{padding:"12px 22px",borderTop:"1px solid #eceef2",display:"flex",justifyContent:"flex-end",gap:6}}><button style={btnG}>Edit</button><button onClick={onAccept} style={btnD}>Accept goals →</button></div></div>;}
+function GoalsPanel({onAccept, onSkip}){
+  const gs=[
+    {n:"Reduce throughput time", desc:"Orders take 18.8 days on average — your fastest site proves 7.7 is possible. We'll target the approval bottleneck and waiting times."},
+    {n:"Lower rework rate", desc:"52% of orders loop through 'Confirmed Changed'. We'll investigate manual re-entry errors, vendor changes, and specification mismatches."},
+    {n:"Improve data quality", desc:"Two key fields are mostly empty — limiting what we can analyze and automate. We'll fix population at source."},
+    {n:"Increase conformance", desc:"1,175 process variants across 17 sites. We'll standardize high-volume paths and eliminate low-frequency deviations."},
+  ];
+  const [selected, setSelected] = useState(new Set([0,1,2,3]));
+  const toggle = (i) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
+  return (
+    <div style={{...ps, width: 480, maxWidth: "90vw"}}>
+      <div style={{padding:"22px 26px 0"}}>
+        <div style={{fontSize:15,fontWeight:700,color:"#1a1d23",marginBottom:3}}>Suggested Goals</div>
+        <div style={{fontSize:12,color:"#8a8f9e",marginBottom:18}}>Select the goals that matter most for your process.</div>
+      </div>
+      <div style={{padding:"0 26px",maxHeight:"55vh",overflowY:"auto"}}>
+        {gs.map((g,i) => {
+          const active = selected.has(i);
+          return (
+            <div key={i} onClick={() => toggle(i)} style={{
+              padding:"14px 16px", borderRadius:11, marginBottom:8, cursor:"pointer",
+              border: active ? "1.5px solid #4f6df5" : "1.5px solid #e8ebf0",
+              background: active ? "#f5f7ff" : "#fff",
+              transition: "all 0.2s ease",
+              display:"flex", gap:14, alignItems:"flex-start",
+            }}>
+              <div style={{
+                width:28, height:28, borderRadius:8, flexShrink:0,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                background: active ? "#4f6df5" : "#f0f2f5",
+                color: active ? "#fff" : "#8a8f9e",
+                fontSize:13, fontWeight:700,
+                transition: "all 0.2s ease",
+              }}>{i + 1}</div>
+              <div style={{flex:1, minWidth:0}}>
+                <div style={{fontSize:13.5,fontWeight:600,color:"#1a1d23",marginBottom:3}}>{g.n}</div>
+                <div style={{fontSize:11.5,color:"#6a7086",lineHeight:1.55}}>{g.desc}</div>
+              </div>
+              <div style={{
+                width:18, height:18, borderRadius:5, flexShrink:0, marginTop:2,
+                border: active ? "none" : "1.5px solid #d0d5e0",
+                background: active ? "#4f6df5" : "transparent",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                transition: "all 0.2s ease",
+              }}>
+                {active && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{padding:"16px 26px",borderTop:"1px solid #eceef2",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <button onClick={onSkip} style={{...btnG, color:"#a0a8b8", border:"none", fontSize:12}}>Skip</button>
+        <button onClick={() => onAccept([...selected])} style={{...btnD, opacity: selected.size === 0 ? 0.4 : 1, pointerEvents: selected.size === 0 ? "none" : "auto"}}>Accept {selected.size} goal{selected.size !== 1 ? "s" : ""} →</button>
+      </div>
+    </div>
+  );
+}
 
 /* ═══ HORIZONTAL BAR CHART (CSS-based) ═══ */
 function HBar({ data }) {
@@ -797,9 +849,10 @@ function DataProfilePanel({ onAccept, narrativeStep }) {
   // 0 = panel appearing (just header visible, rest dim)
   // 1 = score spotlight — hero ring glows
   // 2 = fields revealed — user can toggle omit/include
-  // 3 = findings spotlight — findings section glows, list appears
-  // 4 = findings expanded — detail view with graphs
-  // 5 = wrapping up — findings collapse, footer appears
+  // 3 = findings spotlight — list appears, blob encourages click
+  // 4 = one finding auto-expands with detail/graphs
+  // 5 = findings collapse back, blob wraps up
+  // 6 = done — footer visible, all interactive
   const step = narrativeStep || 0;
 
   const activities = [
@@ -829,8 +882,8 @@ function DataProfilePanel({ onAccept, narrativeStep }) {
   const scoreSpotlight = step === 1;
   const fieldsVisible = step >= 2;
   const findingsSpotlight = step >= 3;
-  const findingsExpanded = step >= 4;
-  const footerVisible = step >= 2;
+  const findingsExpanded = step === 4;
+  const footerVisible = step >= 6;
 
   // Scroll to findings when spotlight hits
   const findingsRef = useRef(null);
@@ -1085,7 +1138,7 @@ function DataProfilePanel({ onAccept, narrativeStep }) {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: passColor }} />
-          <span style={{ fontSize: 11, color: "#7a8194" }}>Score: {score}/100</span>
+          <span style={{ fontSize: 11, color: "#7a8194" }}>{included.length} of {fields.length} fields</span>
         </div>
         <button onClick={onAccept} style={btnD}>Looks good →</button>
       </div>
@@ -1093,52 +1146,58 @@ function DataProfilePanel({ onAccept, narrativeStep }) {
   );
 }
 
-function TargetsPanel({onAccept}){
-  const ts=[
-    { n: "Throughput time", b: "18.8d", t: "14d",
-      why: "Your fastest site PM1 already achieves 7.7 days — proving 14 days is realistic across the board.",
-      benchmark: "Industry benchmark for purchase-to-receive in manufacturing is 10–15 days (APQC median: 12.4d). Your target of 14d aligns with the 50th percentile.",
-      how: "Focus on the approval bottleneck (Free → Approved) and reduce wait times between Sent and In Process." },
-    { n: "Rework rate", b: "52%", t: "35%",
-      why: "52% of orders loop through 'Confirmed Changed' — this is the single biggest structural issue in your process.",
-      benchmark: "Best-in-class procurement processes see rework rates below 15% (Hackett Group). Even 35% keeps you above median, but represents a 30% relative improvement.",
-      how: "Investigate root causes: manual re-entry errors, vendor-side changes, and specification mismatches at confirmation." },
-    { n: "Data quality", b: "50/100", t: "70+",
-      why: "Two fields (item_signal at 95% null, selection_code at 42% null) severely limit what we can analyze.",
-      benchmark: "Data quality scores above 70 are considered 'actionable' for process mining. Below 50 means significant blind spots in variant and root-cause analysis.",
-      how: "Fix selection_code population at order creation. Decide whether item_signal should be deprecated or enforced." },
-    { n: "Conformance", b: "1,175 variants", t: "<400",
-      why: "1,175 process variants across 17 sites indicates extreme fragmentation — most variants have fewer than 10 cases.",
-      benchmark: "Well-governed procurement processes typically have 50–200 variants (Celonis benchmark). Under 400 is a pragmatic first milestone that preserves regional flexibility.",
-      how: "Standardize the top 5 sites first (they represent 60% of volume). Eliminate low-frequency deviation paths." },
-  ];
+const ALL_TARGETS = [
+  { n: "Throughput time", b: "18.8d", t: "14d",
+    why: "Your fastest site PM1 already achieves 7.7 days — proving 14 days is realistic across the board.",
+    benchmark: "Industry benchmark for purchase-to-receive in manufacturing is 10–15 days (APQC median: 12.4d). Your target of 14d aligns with the 50th percentile.",
+    how: "Focus on the approval bottleneck (Free → Approved) and reduce wait times between Sent and In Process." },
+  { n: "Rework rate", b: "52%", t: "35%",
+    why: "52% of orders loop through 'Confirmed Changed' — this is the single biggest structural issue in your process.",
+    benchmark: "Best-in-class procurement processes see rework rates below 15% (Hackett Group). Even 35% keeps you above median, but represents a 30% relative improvement.",
+    how: "Investigate root causes: manual re-entry errors, vendor-side changes, and specification mismatches at confirmation." },
+  { n: "Data quality", b: "50/100", t: "70+",
+    why: "Two fields (item_signal at 95% null, selection_code at 42% null) severely limit what we can analyze.",
+    benchmark: "Data quality scores above 70 are considered 'actionable' for process mining. Below 50 means significant blind spots in variant and root-cause analysis.",
+    how: "Fix selection_code population at order creation. Decide whether item_signal should be deprecated or enforced." },
+  { n: "Conformance", b: "1,175 variants", t: "<400",
+    why: "1,175 process variants across 17 sites indicates extreme fragmentation — most variants have fewer than 10 cases.",
+    benchmark: "Well-governed procurement processes typically have 50–200 variants (Celonis benchmark). Under 400 is a pragmatic first milestone that preserves regional flexibility.",
+    how: "Standardize the top 5 sites first (they represent 60% of volume). Eliminate low-frequency deviation paths." },
+];
+
+function SingleTargetCard({target, index, total, onAccept, onSkip}){
   return (
-    <div style={{...ps, width: 520, maxHeight: "85vh"}}>
-      <div style={{padding:"20px 22px 0"}}>
-        <div style={{fontSize:15,fontWeight:700,color:"#1a1d23",marginBottom:4}}>Suggested Targets</div>
-        <div style={{fontSize:11.5,color:"#8a8f9e",marginBottom:16}}>Each target is grounded in your data and industry benchmarks. Adjust any that don't feel right.</div>
-      </div>
-      <div style={{padding:"0 22px 16px", overflowY:"auto", maxHeight:"68vh"}}>
-        {ts.map((t,i) => (
-          <div key={i} style={{padding:"14px 16px", border:"1.5px solid #e8ebf0", borderRadius:10, marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-              <div style={{fontSize:14,fontWeight:700,color:"#1a1d23"}}>{t.n}</div>
-              <div style={{padding:"3px 10px",background:"#f0f2ff",borderRadius:6,fontSize:12,fontWeight:600,color:"#4f6df5"}}>{t.b} → {t.t}</div>
-            </div>
-            <div style={{fontSize:12,color:"#3a3f4a",lineHeight:1.6,marginBottom:8}}>{t.why}</div>
-            <div style={{padding:"8px 12px",background:"#f7f8fa",borderRadius:7,marginBottom:8,borderLeft:"3px solid #d0d5e0"}}>
-              <div style={{fontSize:9.5,fontWeight:700,color:"#a0a8b8",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:3}}>Industry benchmark</div>
-              <div style={{fontSize:11.5,color:"#5a5f6e",lineHeight:1.5}}>{t.benchmark}</div>
-            </div>
-            <div style={{fontSize:11,color:"#7a8194",lineHeight:1.5}}>
-              <span style={{fontWeight:600,color:"#5a5f6e"}}>How to get there: </span>{t.how}
-            </div>
+    <div style={{...ps, width: 460, maxWidth: "90vw"}}>
+      <div style={{padding:"20px 24px 0"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <div style={{fontSize:15,fontWeight:700,color:"#1a1d23"}}>{target.n}</div>
+          <div style={{fontSize:11,color:"#a0a8b8",fontWeight:500}}>{index + 1} of {total}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+          <div style={{flex:1,textAlign:"center",padding:"10px 0",background:"#f7f8fa",borderRadius:8}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:"#a0a8b8",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Current</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#1a1d23"}}>{target.b}</div>
           </div>
-        ))}
+          <svg width="20" height="12" viewBox="0 0 20 12"><path d="M2 6h16M14 2l4 4-4 4" stroke="#4f6df5" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div style={{flex:1,textAlign:"center",padding:"10px 0",background:"#f0f2ff",borderRadius:8,border:"1.5px solid #d8ddf5"}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:"#4f6df5",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:2}}>Target</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#4f6df5"}}>{target.t}</div>
+          </div>
+        </div>
       </div>
-      <div style={{padding:"14px 22px",borderTop:"1px solid #eceef2",display:"flex",justifyContent:"flex-end",gap:6}}>
-        <button style={btnG}>Adjust</button>
-        <button onClick={onAccept} style={btnD}>Confirm targets →</button>
+      <div style={{padding:"0 24px 16px"}}>
+        <div style={{fontSize:12.5,color:"#3a3f4a",lineHeight:1.65,marginBottom:12}}>{target.why}</div>
+        <div style={{padding:"10px 14px",background:"#f7f8fa",borderRadius:8,marginBottom:12,borderLeft:"3px solid #d0d5e0"}}>
+          <div style={{fontSize:9.5,fontWeight:700,color:"#a0a8b8",textTransform:"uppercase",letterSpacing:"0.6px",marginBottom:3}}>Industry benchmark</div>
+          <div style={{fontSize:11.5,color:"#5a5f6e",lineHeight:1.55}}>{target.benchmark}</div>
+        </div>
+        <div style={{fontSize:11.5,color:"#7a8194",lineHeight:1.55}}>
+          <span style={{fontWeight:600,color:"#5a5f6e"}}>How to get there: </span>{target.how}
+        </div>
+      </div>
+      <div style={{padding:"14px 24px",borderTop:"1px solid #eceef2",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <button onClick={onSkip} style={{...btnG, color:"#a0a8b8", border:"none", fontSize:12}}>Skip this target</button>
+        <button onClick={onAccept} style={btnD}>Accept target →</button>
       </div>
     </div>
   );
@@ -1329,10 +1388,7 @@ function GoalsDocPanel({ data }) {
             {data.goals.map((g, i) => (
               <div key={i} style={{ padding: "14px 16px", border: "1.5px solid #e8ebf0", borderRadius: 10, marginBottom: 8 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: g.why ? 8 : 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {g.icon && <span style={{ fontSize: 16 }}>{g.icon}</span>}
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1d23" }}>{g.n}</div>
-                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1a1d23" }}>{g.n}</div>
                   {g.b ? (
                     <div style={{ padding: "3px 10px", background: "#f0f2ff", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#4f6df5" }}>{g.b} → {g.t}</div>
                   ) : g.current ? (
@@ -1672,6 +1728,9 @@ export default function App() {
   const [docData, setDocData] = useState(null);
   const [docVisible, setDocVisible] = useState(true);
   const [goalsDoc, setGoalsDoc] = useState(null);
+  const [targetIdx, setTargetIdx] = useState(0);
+  const [activeTargets, setActiveTargets] = useState([]); // target indices matching selected goals
+  const [acceptedTargets, setAcceptedTargets] = useState([]); // targets confirmed by user
   const [showProcessTeaser, setShowProcessTeaser] = useState(false);
   const [showCenterProcess, setShowCenterProcess] = useState(false);
   const [centerProcessFading, setCenterProcessFading] = useState(false);
@@ -1871,7 +1930,7 @@ export default function App() {
 
     } else if (phase === "targets") {
       setBlob("thinking");
-      setTimeout(() => { setBlob("waiting"); setBlobText("Review the targets — each has a reason. Confirm when ready."); }, 500);
+      setTimeout(() => { setBlob("waiting"); setBlobText("Review the target and accept or skip it. We'll go through them one by one."); }, 500);
 
     } else if (phase === "junction") {
       setBlob("thinking");
@@ -1992,27 +2051,32 @@ export default function App() {
         setDqNarrativeStep(2);
       }, 5000);
 
-      // Step 3: Findings intro after 9s
+      // Step 3: Findings intro after 9s — list appears
       setTimeout(() => {
-        setBlobText("Now let me introduce the concept of Findings.");
+        setBlobText("Now let me introduce the concept of Findings.\n\nFindings are the lifeforce of improvement in Namuda.");
         setDqNarrativeStep(3);
       }, 9000);
 
-      // Blob explains findings after 11s
+      // Blob encourages user to explore after 12s
       setTimeout(() => {
-        setBlobText("Findings are the lifeforce of improvement in Namuda.\n\nHere you can see the findings related to data quality.");
-      }, 11000);
+        setBlobText("Here are the findings related to data quality. Click one to explore it.");
+      }, 12000);
 
-      // Step 4: Expand findings with detail/graphs after 14s
+      // Step 4: Auto-expand first finding after 14s
       setTimeout(() => {
         setDqNarrativeStep(4);
       }, 14000);
 
-      // Blob wraps up after 17s
+      // Step 5: Auto-collapse findings after 18s
+      setTimeout(() => {
+        setDqNarrativeStep(5);
+      }, 18000);
+
+      // Step 6: Wrap up after 19.5s
       setTimeout(() => {
         setBlobText("We can work on these together later — I'll put them away for now.\n\nClick 'Looks good' when you're ready to continue.");
-        setDqNarrativeStep(5);
-      }, 17000);
+        setDqNarrativeStep(6);
+      }, 19500);
 
     }, 800);
   };
@@ -2027,45 +2091,104 @@ export default function App() {
     }, 1500);
   };
 
-  const acceptGoals = () => {
+  const ALL_GOALS = [
+    { n: "Reduce throughput time", current: "18.8 days avg",
+      why: "Throughput directly impacts working capital and supplier relationships. Faster cycles mean less inventory and quicker response to demand.",
+      evidence: "PM1 achieves 7.7d while PN1 takes 34d — the gap proves structural improvement is possible." },
+    { n: "Lower rework rate", current: "52%",
+      why: "Every rework loop doubles handling cost and delays downstream steps. Rework is the primary driver of throughput variance.",
+      evidence: "52% of orders hit 'Confirmed Changed' — this single loop accounts for an estimated 40% of excess cycle time." },
+    { n: "Improve data quality", current: "50/100",
+      why: "Low data quality limits what we can analyze and automate. Missing fields create blind spots in root-cause analysis.",
+      evidence: "item_signal is 95% null, selection_code is 42% null — two fields that could unlock automation insights." },
+    { n: "Increase conformance", current: "1,175 variants",
+      why: "High variant count means the process behaves differently everywhere — making it hard to optimize, train, or automate.",
+      evidence: "17 sites, 1,175 variants. Most variants have <10 cases — long-tail fragmentation across regional offices." },
+  ];
+
+  const acceptGoals = (selectedIndices) => {
     setPanel(null);
+    const selectedGoals = selectedIndices.map(i => ALL_GOALS[i]);
     setGoalsDoc({
       mission: docData?.mission || "To have an efficient purchasing process that is uniform across all sales offices.",
-      goals: [
-        { n: "Reduce throughput time", current: "18.8 days avg", icon: "⏱",
-          why: "Throughput directly impacts working capital and supplier relationships. Faster cycles mean less inventory and quicker response to demand.",
-          evidence: "PM1 achieves 7.7d while PN1 takes 34d — the gap proves structural improvement is possible." },
-        { n: "Lower rework rate", current: "52%", icon: "🔄",
-          why: "Every rework loop doubles handling cost and delays downstream steps. Rework is the primary driver of throughput variance.",
-          evidence: "52% of orders hit 'Confirmed Changed' — this single loop accounts for an estimated 40% of excess cycle time." },
-        { n: "Improve data quality", current: "50/100", icon: "📊",
-          why: "Low data quality limits what we can analyze and automate. Missing fields create blind spots in root-cause analysis.",
-          evidence: "item_signal is 95% null, selection_code is 42% null — two fields that could unlock automation insights." },
-        { n: "Increase conformance", current: "1,175 variants", icon: "📐",
-          why: "High variant count means the process behaves differently everywhere — making it hard to optimize, train, or automate.",
-          evidence: "17 sites, 1,175 variants. Most variants have <10 cases — long-tail fragmentation across regional offices." },
-      ],
+      goals: selectedGoals,
     });
+    // Set up targets flow — only targets for selected goals
+    setActiveTargets(selectedIndices);
+    setTargetIdx(0);
+    setAcceptedTargets([]);
     setBlob("thinking");
     setTimeout(() => {
       setBlob("waiting");
-      setBlobText("Goals confirmed. Now let me suggest specific targets for each — here's where I think you can realistically get to:");
-      setTimeout(() => { setPanel("targets"); setPhase("targets"); }, 600);
+      const firstTarget = ALL_TARGETS[selectedIndices[0]];
+      setBlobText(`Goals confirmed! Now let's set targets.\n\nFirst up: ${firstTarget.n}. Here's where I think you can realistically get to:`);
+      setTimeout(() => { setPanel("target-single"); setPhase("targets"); }, 600);
     }, 700);
   };
 
-  const acceptTargets = () => {
+  const skipGoals = () => {
     setPanel(null);
-    setGoalsDoc(prev => ({ ...prev, goals: [
-      { n: "Throughput time", b: "18.8d", t: "14d" }, { n: "Rework rate", b: "52%", t: "35%" },
-      { n: "Data quality", b: "50/100", t: "70+" }, { n: "Conformance", b: "1,175 var", t: "<400" },
-    ]}));
     setBlob("thinking");
     setTimeout(() => {
       setBlob("waiting");
-      setBlobText("Targets locked in! Now — here's what I'd suggest as your next move:");
+      setBlobText("No problem — we can come back to goals later. Let's move on:");
       setPanel("junction"); setPhase("junction");
-    }, 800);
+    }, 600);
+  };
+
+  const acceptSingleTarget = () => {
+    const currentTargetGlobalIdx = activeTargets[targetIdx];
+    const target = ALL_TARGETS[currentTargetGlobalIdx];
+    // Add target to goals doc
+    setAcceptedTargets(prev => [...prev, target]);
+    setGoalsDoc(prev => {
+      const updatedGoals = prev.goals.map((g, i) => {
+        if (i === targetIdx) return { ...g, b: target.b, t: target.t };
+        return g;
+      });
+      return { ...prev, goals: updatedGoals };
+    });
+    // Move to next target or finish
+    const nextIdx = targetIdx + 1;
+    if (nextIdx < activeTargets.length) {
+      setPanel(null);
+      setBlob("thinking");
+      setTargetIdx(nextIdx);
+      const nextTarget = ALL_TARGETS[activeTargets[nextIdx]];
+      setTimeout(() => {
+        setBlob("waiting");
+        setBlobText(`Target accepted! Next: ${nextTarget.n}.`);
+        setTimeout(() => { setPanel("target-single"); }, 500);
+      }, 500);
+    } else {
+      // All targets done
+      setPanel(null);
+      setBlob("thinking");
+      setTimeout(() => {
+        setBlob("waiting");
+        setBlobText("All targets locked in! Now — here's what I'd suggest as your next move:");
+        setPanel("junction"); setPhase("junction");
+      }, 800);
+    }
+  };
+
+  const skipSingleTarget = () => {
+    const nextIdx = targetIdx + 1;
+    if (nextIdx < activeTargets.length) {
+      setPanel(null);
+      setTargetIdx(nextIdx);
+      const nextTarget = ALL_TARGETS[activeTargets[nextIdx]];
+      setBlobText(`Skipped. Next: ${nextTarget.n}.`);
+      setTimeout(() => { setPanel("target-single"); }, 400);
+    } else {
+      setPanel(null);
+      setBlob("thinking");
+      setTimeout(() => {
+        setBlob("waiting");
+        setBlobText("Targets done! Now — here's what I'd suggest as your next move:");
+        setPanel("junction"); setPhase("junction");
+      }, 800);
+    }
   };
 
   // Seed state needed for any phase so forward jumps work
@@ -2104,7 +2227,7 @@ export default function App() {
       setPanel("data"); setPhase("data");
     } else if (step.id === "profile") {
       setBlobText("Review the data quality assessment.");
-      setDqNarrativeStep(5); // skip narrative on jump
+      setDqNarrativeStep(6); // skip narrative on jump
       setPanel("data-profile"); setPhase("data-profile");
     } else if (step.id === "fields") {
       setBlobText("Review the field mapping.");
@@ -2130,15 +2253,16 @@ export default function App() {
         setGoalsDoc({
           mission: docData?.mission || "To have an efficient purchasing process that is uniform across all sales offices.",
           goals: [
-            { n: "Reduce throughput time", current: "18.8 days avg", icon: "⏱", why: "Throughput directly impacts working capital.", evidence: "PM1 achieves 7.7d while PN1 takes 34d." },
-            { n: "Lower rework rate", current: "52%", icon: "🔄", why: "Every rework loop doubles handling cost.", evidence: "52% of orders hit 'Confirmed Changed'." },
-            { n: "Improve data quality", current: "50/100", icon: "📊", why: "Low data quality limits analysis.", evidence: "item_signal 95% null, selection_code 42% null." },
-            { n: "Increase conformance", current: "1,175 variants", icon: "📐", why: "High variant count means fragmentation.", evidence: "17 sites, 1,175 variants." },
+            { n: "Reduce throughput time", current: "18.8 days avg", why: "Throughput directly impacts working capital.", evidence: "PM1 achieves 7.7d while PN1 takes 34d." },
+            { n: "Lower rework rate", current: "52%", why: "Every rework loop doubles handling cost.", evidence: "52% of orders hit 'Confirmed Changed'." },
+            { n: "Improve data quality", current: "50/100", why: "Low data quality limits analysis.", evidence: "item_signal 95% null, selection_code 42% null." },
+            { n: "Increase conformance", current: "1,175 variants", why: "High variant count means fragmentation.", evidence: "17 sites, 1,175 variants." },
           ],
         });
       }
       setBlobText("Here are the suggested targets:");
-      setPanel("targets"); setPhase("targets");
+      setActiveTargets([0,1,2,3]); setTargetIdx(0); setAcceptedTargets([]);
+      setPanel("target-single"); setPhase("targets");
     } else if (step.id === "junction") {
       seedState(); setDocVisible(false);
       if (!goalsDoc) {
@@ -2251,7 +2375,7 @@ export default function App() {
 
         {/* BLOB + CHAT column — pushes right when doc is visible */}
         {!isReview && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginRight: showProcessTeaser && !isThink ? 352 : 0, transition: "margin 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginRight: showProcessTeaser && !isThink && !hasDoc ? 352 : 0, transition: "margin 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
 
             {(isThink || !hasStarted) ? (
               <div style={{
@@ -2344,8 +2468,16 @@ export default function App() {
             {panel === "data" && <DataPanel onSelect={pickData} />}
             {/* data-profile now rendered as side panel */}
             {/* FieldPanel removed — field mapping now inline via FieldCard */}
-            {panel === "goals" && <GoalsPanel onAccept={acceptGoals} />}
-            {panel === "targets" && <TargetsPanel onAccept={acceptTargets} />}
+            {panel === "goals" && <GoalsPanel onAccept={acceptGoals} onSkip={skipGoals} />}
+            {panel === "target-single" && activeTargets[targetIdx] !== undefined && (
+              <SingleTargetCard
+                target={ALL_TARGETS[activeTargets[targetIdx]]}
+                index={targetIdx}
+                total={activeTargets.length}
+                onAccept={acceptSingleTarget}
+                onSkip={skipSingleTarget}
+              />
+            )}
             {panel === "junction" && <JunctionPanel onSelect={(id) => {
               setPanel(null);
               if (id === "canvas") {
