@@ -1442,9 +1442,15 @@ const CANVAS_RESPONSES = [
   { match: /block/i, text: "24,435 cases pass through Blocked (68% of total). The Blocked self-loop (9,826 cases, 7.0h) suggests orders get stuck in repeated blocking cycles. The Blocked to Free return path is rare (15 cases) -- most blocked orders route back through Approved." },
   { match: /free|start|begin/i, text: "Free is the entry point for 97.9% of cases. Average duration is just 5.5h -- it's not a bottleneck itself. The main split: 84% flow to Approved (happy path), 16% route directly to Blocked." },
   { match: /approv/i, text: "Approved handles 52,107 cases with 2.0d average duration. The self-loop (10,009 cases, 1.5d) is significant -- orders cycling back for re-approval. This is likely driven by specification changes or vendor modifications after initial approval." },
-  { match: /improv|fix|recommend|action/i, text: "Based on the context, I'd prioritize: (1) Automate the Last Confirmation Print step where possible -- 5.7d is excessive. (2) Reduce Approved self-loops by catching spec changes earlier. (3) Investigate why 16% of orders go directly to Blocked from Free." },
+  { match: /improv|fix|recommend|action|what.*do|next.*step/i, text: "Based on the context, I'd prioritize three actions: (1) Automate the confirmation print step -- 5.7d average is the single largest delay. (2) Investigate the Approved self-loop trigger -- 10,009 unnecessary re-approvals. (3) Add a fast-track path from Blocked to Last Confirmation Print for orders that resolve quickly.", triggerFinding: true },
 ];
 const CANVAS_DEFAULT_RESPONSE = "I can see the items you've selected. Try asking about bottlenecks, rework loops, blocked orders, or what improvements I'd recommend.";
+const CANVAS_FINDING = {
+  title: "Confirmation print bottleneck with rework amplification",
+  severity: "High", sevColor: "#d4685a",
+  summary: "Last Confirmation Print adds 5.7d avg to every case. The Approved self-loop (10,009 cases at 1.5d) creates compounding delays -- each re-approval cycle pushes cases back through the 2.3d Approved to LCP transition.",
+  recommendation: "Investigate confirmation approval automation. Reduce re-approval triggers from the Approved self-loop. Consider fast-tracking orders that have already passed Blocked status.",
+};
 
 function CanvasView() {
   const [aiContext, setAiContext] = useState([]);
@@ -1454,21 +1460,37 @@ function CanvasView() {
   const [hasNotified, setHasNotified] = useState(false);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [hoveredEdge, setHoveredEdge] = useState(null);
+  const [hoveredBar, setHoveredBar] = useState(null);
   const [aiTyping, setAiTyping] = useState(false);
+  const [findingStored, setFindingStored] = useState(false);
+  const [findingExpanded, setFindingExpanded] = useState(false);
+  const [userMsgCount, setUserMsgCount] = useState(0);
   const chatEndRef = useRef(null);
 
   const addContext = (item) => {
     setAiContext(prev => {
-      const key = item.type === "node" ? item.label : item.id;
-      if (prev.some(p => (p.type === "node" ? p.label : p.id) === key)) return prev;
+      const key = item.type === "node" ? item.label : (item.id || item.label);
+      if (prev.some(p => ((p.type === "node" ? p.label : (p.id || p.label))) === key)) return prev;
       return [...prev, item];
     });
     if (!chatOpen) { setChatOpen(true); setHasNotified(true); }
   };
 
+  const triggerFinding = () => {
+    if (chatMessages.some(m => m.type === "finding")) return;
+    setTimeout(() => {
+      setChatMessages(prev => [...prev, { role: "ai", text: "Based on what we've explored, I think we have a finding." }]);
+      setTimeout(() => {
+        setChatMessages(prev => [...prev, { role: "ai", type: "finding", ...CANVAS_FINDING }]);
+      }, 800);
+    }, 1500);
+  };
+
   const sendChat = () => {
     const text = chatInput.trim();
     if (!text || aiTyping) return;
+    const newCount = userMsgCount + 1;
+    setUserMsgCount(newCount);
     setChatMessages(prev => [...prev, { role: "user", text }]);
     setChatInput("");
     setAiTyping(true);
@@ -1476,7 +1498,19 @@ function CanvasView() {
       const match = CANVAS_RESPONSES.find(r => r.match.test(text));
       setChatMessages(prev => [...prev, { role: "ai", text: match ? match.text : CANVAS_DEFAULT_RESPONSE }]);
       setAiTyping(false);
+      if ((match && match.triggerFinding) || newCount >= 3) triggerFinding();
     }, 800);
+  };
+
+  const storeFinding = () => {
+    setFindingStored(true);
+    setTimeout(() => {
+      setChatMessages(prev => [...prev, { role: "ai", text: "Finding stored! You can keep exploring or head to the improvement flow when you're ready." }]);
+    }, 600);
+  };
+
+  const keepExploring = () => {
+    setChatMessages(prev => [...prev, { role: "ai", text: "No problem -- let's keep digging. What else would you like to investigate?" }]);
   };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages, aiTyping]);
@@ -1506,11 +1540,8 @@ function CanvasView() {
   ];
 
   const kpis = [
-    { l: "Cases", v: "35,856" },
-    { l: "Events", v: "893,207" },
-    { l: "Activities", v: "4" },
-    { l: "Conformance", v: "72.45%" },
-    { l: "Throughput", v: "7.05d" },
+    { l: "Cases", v: "35,856" }, { l: "Events", v: "893,207" }, { l: "Activities", v: "4" },
+    { l: "Conformance", v: "72.45%" }, { l: "Throughput", v: "7.05d" },
   ];
 
   const variantData = [
@@ -1520,19 +1551,54 @@ function CanvasView() {
   ];
   const holdData = [
     { l: "180", v: 73, hl: true }, { l: "250", v: 54, hl: true },
-    { l: "300", v: 34 }, { l: "221", v: 27 },
-    { l: "290", v: 13 }, { l: "270", v: 10 },
+    { l: "300", v: 34 }, { l: "221", v: 27 }, { l: "290", v: 13 }, { l: "270", v: 10 },
   ];
   const releaseData = [
     { l: "Soft Released", v: 167, hl: true }, { l: "Firm Released", v: 72 }, { l: "Blocked", v: 8 },
   ];
+
+  /* Helper: render a frequency bar section with sparkle-on-hover */
+  const renderBarSection = (title, data, maxVal, sectionKey) => (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>{title}</div>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
+      </div>
+      {data.map((d, i) => {
+        const barKey = `${sectionKey}-${i}`;
+        const isHov = hoveredBar === barKey;
+        return (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, position: "relative" }}
+            onMouseEnter={() => setHoveredBar(barKey)} onMouseLeave={() => setHoveredBar(null)}>
+            <div style={{ width: `${(d.v / maxVal) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
+              <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
+            </div>
+            <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v.toLocaleString()}</span>
+            {isHov && (
+              <button onClick={(ev) => { ev.stopPropagation(); addContext({ type: "filter", id: `${sectionKey}:${d.l}`, label: d.l, value: d.v, category: title }); }}
+                style={{
+                  position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%",
+                  background: "#6366f1", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", boxShadow: "0 2px 6px rgba(99,102,241,0.3)", padding: 0, zIndex: 10,
+                  animation: "sparkleAppear 0.15s ease",
+                }} title="Add to context">
+                <SparklesIcon size={7} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const typeColor = (t) => t === "node" ? "#6366f1" : t === "edge" ? "#0ea5e9" : "#10b981";
 
   return (
     <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", animation: "canvasEnter 0.7s cubic-bezier(0.16,1,0.3,1)" }}>
       {/* Top filter bar */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "8px 20px", borderBottom: "1px solid #e8ebf0", background: "#fff", flexShrink: 0, zIndex: 5,
+        padding: "8px 20px", borderBottom: "1px solid #e8ebf0", background: "#fff", flexShrink: 0, zIndex: 20,
         animation: "slideInDown 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s both",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1541,9 +1607,7 @@ function CanvasView() {
             Period
           </div>
           <div style={{ fontSize: 11, color: "#7a8194" }}>Mar 20, 2025 - Mar 20, 2026</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e", fontWeight: 500 }}>
-            sales_office
-          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e", fontWeight: 500 }}>sales_office</div>
           <div style={{ fontSize: 11, color: "#7a8194" }}>1/30</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1556,108 +1620,20 @@ function CanvasView() {
         </div>
       </div>
 
-      {/* Main content */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        {/* Left sidebar — supporting information */}
-        <div style={{
-          width: 310, flexShrink: 0, borderRight: "1px solid #e8ebf0", background: "#fff",
-          overflowY: "auto", padding: "16px 18px",
-          animation: "slideInLeft 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1d23" }}>Supporting information</div>
-            <div style={{ display: "flex", gap: 4 }}>
-              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>^</div>
-              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>+</div>
-            </div>
-          </div>
+      {/* Full-width canvas area */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        {/* Dot background */}
+        <DotBackground isDark={false} />
 
-          {/* Frequency by variant name */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by variant name</div>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 9, color: "#a0a8b8", justifyContent: "flex-end" }}>
-              <span>#</span><span style={{ opacity: 0.5 }}>|</span>
-            </div>
-            {variantData.map((d, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <div style={{ width: `${(d.v / 3492) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
-                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
-                </div>
-                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v.toLocaleString()}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
-              <span>Performance indicator</span>
-              <span style={{ fontWeight: 600 }}>6.83 m.</span>
-              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
-                <div style={{ width: "65%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
-              </div>
-              <span style={{ fontWeight: 600 }}>292.39 d.</span>
-            </div>
-          </div>
-
-          {/* Frequency by blocked hold reason code */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by blocked hold reason code</div>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
-            </div>
-            {holdData.map((d, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <div style={{ width: `${(d.v / 73) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
-                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
-                </div>
-                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
-              <span>Performance indicator</span>
-              <span style={{ fontWeight: 600 }}>0</span>
-              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
-                <div style={{ width: "45%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
-              </div>
-              <span style={{ fontWeight: 600 }}>155.78 d.</span>
-            </div>
-          </div>
-
-          {/* Frequency by release type */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by release type</div>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
-            </div>
-            {releaseData.map((d, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                <div style={{ width: `${(d.v / 167) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
-                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
-                </div>
-                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
-              <span>Performance indicator</span>
-              <span style={{ fontWeight: 600 }}>0 m.</span>
-              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
-                <div style={{ width: "85%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
-              </div>
-              <span style={{ fontWeight: 600 }}>2.68 d.</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Center — Process DAG */}
-        <div style={{ flex: 1, position: "relative", background: "#fafbfc", overflow: "auto" }}>
-          <div style={{ position: "relative", width: 720, height: 700, margin: "20px auto", animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both" }}>
+        {/* Process DAG — centered */}
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+          <div style={{ position: "relative", width: 720, height: 700, animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both" }}>
             <svg width="720" height="700" viewBox="0 0 720 700" style={{ position: "absolute", inset: 0 }}>
-              {/* Edges (lines only — labels rendered as HTML overlays) */}
               {edges.map((e, i) => {
                 if (e.selfLoop) return null;
                 const a = nodes[e.from], b = nodes[e.to];
                 const aw = a.w || 56, ah = a.h || (a.type === "circle" ? 28 : 60);
-                const bw = b.w || 56, bh = b.h || (b.type === "circle" ? 28 : 60);
+                const bw = b.w || 56;
                 const ax = a.x + aw / 2, ay = a.y + ah;
                 const bx = b.x + bw / 2, by = b.y;
                 const stroke = e.isBottleneck ? "#f87171" : e.isBackbone ? "#94a3b8" : "#cbd5e1";
@@ -1665,58 +1641,39 @@ function CanvasView() {
                 if (e.rework) {
                   const cx = Math.max(ax, bx) + 90;
                   return <path key={`e${i}`} d={`M${ax},${ay} C${cx},${ay} ${cx},${by} ${bx},${by}`}
-                    fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray="6 4" opacity="0.7"
-                    markerEnd="url(#arrowRed)" />;
+                    fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray="6 4" opacity="0.7" markerEnd="url(#arrowRed)" />;
                 }
                 return <g key={`e${i}`}>
                   <line x1={ax} y1={ay} x2={bx} y2={by} stroke={stroke} strokeWidth={sw} />
                   <polygon points={`${(ax+bx)/2-4},${(ay+by)/2-3} ${(ax+bx)/2+4},${(ay+by)/2-3} ${(ax+bx)/2},${(ay+by)/2+4}`} fill={stroke} />
                 </g>;
               })}
-              {/* Self-loop arcs */}
               {edges.map((e, i) => {
                 if (!e.selfLoop) return null;
                 const n = nodes[e.from];
                 const nx = n.x + (n.w || 56), ny = n.y + (n.h || 60) / 2;
                 const stroke = e.isBottleneck ? "#f87171" : "#c4b5fd";
-                return <path key={`sl${i}`} d={`M${nx},${ny - 14} h22 a18,18 0 0 1 18,18 v0 a18,18 0 0 1 -18,18 h-22`}
+                return <path key={`sl${i}`} d={`M${nx},${ny-14} h22 a18,18 0 0 1 18,18 v0 a18,18 0 0 1 -18,18 h-22`}
                   fill="none" stroke={stroke} strokeWidth="2" markerEnd={e.isBottleneck ? "url(#arrowRed)" : "url(#arrowPurple)"} />;
               })}
-              {/* Arrow markers */}
               <defs>
-                <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171" />
-                </marker>
-                <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b5fd" />
-                </marker>
+                <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#f87171" /></marker>
+                <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#c4b5fd" /></marker>
               </defs>
             </svg>
 
-            {/* Edge label pills (HTML overlays) */}
+            {/* Edge label pills */}
             {edges.map((e, i) => {
               if (!e.count || e.from === 0) return null;
               const a = nodes[e.from], b = nodes[e.to];
               let px, py;
-              if (e.selfLoop) {
-                px = a.x + (a.w || 56) + 58;
-                py = a.y + (a.h || 60) / 2;
-              } else if (e.rework) {
-                const ax2 = a.x + (a.w || 56) / 2, ay2 = a.y + (a.h || 60);
-                const bx2 = b.x + (b.w || 56) / 2, by2 = b.y;
-                px = Math.max(ax2, bx2) + 80;
-                py = (ay2 + by2) / 2;
-              } else {
-                const ax2 = a.x + (a.w || 56) / 2, ay2 = a.y + (a.h || 60);
-                const bx2 = b.x + (b.w || 56) / 2, by2 = b.y;
-                px = (ax2 + bx2) / 2 + 14;
-                py = (ay2 + by2) / 2 - 4;
-              }
+              if (e.selfLoop) { px = a.x + (a.w || 56) + 58; py = a.y + (a.h || 60) / 2; }
+              else if (e.rework) { const ax2 = a.x + (a.w||56)/2, ay2 = a.y + (a.h||60), bx2 = b.x + (b.w||56)/2, by2 = b.y; px = Math.max(ax2,bx2)+80; py = (ay2+by2)/2; }
+              else { const ax2 = a.x + (a.w||56)/2, ay2 = a.y + (a.h||60), bx2 = b.x + (b.w||56)/2, by2 = b.y; px = (ax2+bx2)/2+14; py = (ay2+by2)/2-4; }
               const edgeId = `${nodes[e.from].label} > ${nodes[e.to].label}`;
               const isHovered = hoveredEdge === i;
               return (
-                <div key={`ep${i}`}
-                  onMouseEnter={() => setHoveredEdge(i)} onMouseLeave={() => setHoveredEdge(null)}
+                <div key={`ep${i}`} onMouseEnter={() => setHoveredEdge(i)} onMouseLeave={() => setHoveredEdge(null)}
                   style={{
                     position: "absolute", left: px, top: py, transform: "translate(-50%, -50%)",
                     display: "flex", alignItems: "center", gap: 4,
@@ -1732,45 +1689,32 @@ function CanvasView() {
                   {e.avgDuration && <span style={{ color: e.isBottleneck ? "#dc2626" : "#94a3b8" }}>{e.avgDuration}</span>}
                   {isHovered && (
                     <button onClick={(ev) => { ev.stopPropagation(); addContext({ type: "edge", id: edgeId, label: edgeId, count: e.count, avgDuration: e.avgDuration, severity: e.isBottleneck ? "bottleneck" : "none" }); }}
-                      style={{
-                        position: "absolute", top: -7, right: -7, width: 18, height: 18, borderRadius: "50%",
+                      style={{ position: "absolute", top: -7, right: -7, width: 18, height: 18, borderRadius: "50%",
                         background: "#6366f1", border: "2px solid #fff", display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", boxShadow: "0 2px 6px rgba(99,102,241,0.3)", padding: 0,
-                        animation: "sparkleAppear 0.15s ease",
-                      }} title="Add to AI context">
-                      <SparklesIcon size={8} />
-                    </button>
+                        cursor: "pointer", boxShadow: "0 2px 6px rgba(99,102,241,0.3)", padding: 0, animation: "sparkleAppear 0.15s ease",
+                      }} title="Add to context"><SparklesIcon size={8} /></button>
                   )}
                 </div>
               );
             })}
 
-            {/* Activity nodes (HTML overlays with hover sparkles) */}
+            {/* Activity nodes */}
             {nodes.map((n, i) => {
-              if (n.type === "circle") {
-                return (
-                  <div key={`n${i}`} style={{
-                    position: "absolute", left: n.x, top: n.y, width: 56, height: 56,
-                    borderRadius: "50%", background: "#1e293b", border: "3px solid #334155",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                  }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: "0.8px", textTransform: "uppercase" }}>{n.label}</span>
-                  </div>
-                );
-              }
+              if (n.type === "circle") return (
+                <div key={`n${i}`} style={{ position: "absolute", left: n.x, top: n.y, width: 56, height: 56,
+                  borderRadius: "50%", background: "#1e293b", border: "3px solid #334155",
+                  display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", letterSpacing: "0.8px", textTransform: "uppercase" }}>{n.label}</span>
+                </div>
+              );
               const isHovered = hoveredNode === i;
               return (
-                <div key={`n${i}`}
-                  onMouseEnter={() => setHoveredNode(i)} onMouseLeave={() => setHoveredNode(null)}
-                  style={{
-                    position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h || 60,
-                    background: n.color || "#f8fafc",
-                    border: `2px solid ${n.borderColor || "#e2e8f0"}`,
+                <div key={`n${i}`} onMouseEnter={() => setHoveredNode(i)} onMouseLeave={() => setHoveredNode(null)}
+                  style={{ position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h || 60,
+                    background: n.color || "#f8fafc", border: `2px solid ${n.borderColor || "#e2e8f0"}`,
                     borderRadius: 10, padding: "10px 14px",
                     boxShadow: isHovered ? "0 4px 16px rgba(0,0,0,0.1)" : "0 1px 3px rgba(0,0,0,0.05)",
-                    cursor: "default", transition: "box-shadow 0.15s ease",
-                  }}>
+                    cursor: "default", transition: "box-shadow 0.15s ease" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     {n.bottleneck && <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="#dc2626" strokeWidth="1.5" fill="none"/><line x1="8" y1="6" x2="8" y2="10" stroke="#dc2626" strokeWidth="1.5"/><circle cx="8" cy="12" r="0.8" fill="#dc2626"/></svg>}
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: n.bottleneck ? "#991b1b" : "#1e293b", lineHeight: "16px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
@@ -1779,68 +1723,98 @@ function CanvasView() {
                     <span># {n.count.toLocaleString()}</span>
                     {n.avgDuration && <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
                       <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.5" stroke="#94a3b8" strokeWidth="1.3"/><path d="M8 4.5V8l2.5 1.5" stroke="#94a3b8" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                      {n.avgDuration}
-                    </span>}
+                      {n.avgDuration}</span>}
                   </div>
                   {isHovered && (
                     <button onClick={(ev) => { ev.stopPropagation(); addContext({ type: "node", label: n.label, count: n.count, avgDuration: n.avgDuration, severity: n.bottleneck ? "bottleneck" : "none" }); }}
-                      style={{
-                        position: "absolute", top: -9, right: -9, width: 24, height: 24, borderRadius: "50%",
+                      style={{ position: "absolute", top: -9, right: -9, width: 24, height: 24, borderRadius: "50%",
                         background: "#6366f1", border: "2.5px solid #fff", display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", boxShadow: "0 2px 8px rgba(99,102,241,0.35)", padding: 0, zIndex: 10,
-                        animation: "sparkleAppear 0.15s ease",
-                      }} title="Add to AI context">
-                      <SparklesIcon size={11} />
-                    </button>
+                        cursor: "pointer", boxShadow: "0 2px 8px rgba(99,102,241,0.35)", padding: 0, zIndex: 10, animation: "sparkleAppear 0.15s ease",
+                      }} title="Add to context"><SparklesIcon size={11} /></button>
                   )}
                 </div>
               );
             })}
           </div>
+        </div>
 
-          {/* Zoom controls */}
-          <div style={{ position: "absolute", left: 20, bottom: 20, display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>+</div>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>-</div>
+        {/* Floating: Supporting information (left) */}
+        <div style={{
+          position: "absolute", top: 16, left: 16, width: 300, maxHeight: "calc(100% - 32px)",
+          background: "#fff", borderRadius: 14, boxShadow: "0 4px 28px rgba(0,0,0,0.07), 0 0 0 1px rgba(0,0,0,0.03)",
+          overflowY: "auto", padding: "16px 18px", zIndex: 10,
+          animation: "slideInLeft 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1d23" }}>Supporting information</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>^</div>
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>+</div>
+            </div>
+          </div>
+          {renderBarSection("Frequency by variant name", variantData, 3492, "variant")}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -12, marginBottom: 20, fontSize: 10, color: "#7a8194" }}>
+            <span>Performance indicator</span><span style={{ fontWeight: 600 }}>6.83 m.</span>
+            <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2 }}><div style={{ width: "65%", height: "100%", background: "#4f6df5", borderRadius: 2 }} /></div>
+            <span style={{ fontWeight: 600 }}>292.39 d.</span>
+          </div>
+          {renderBarSection("Frequency by blocked hold reason code", holdData, 73, "hold")}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -12, marginBottom: 20, fontSize: 10, color: "#7a8194" }}>
+            <span>Performance indicator</span><span style={{ fontWeight: 600 }}>0</span>
+            <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2 }}><div style={{ width: "45%", height: "100%", background: "#4f6df5", borderRadius: 2 }} /></div>
+            <span style={{ fontWeight: 600 }}>155.78 d.</span>
+          </div>
+          {renderBarSection("Frequency by release type", releaseData, 167, "release")}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -12, fontSize: 10, color: "#7a8194" }}>
+            <span>Performance indicator</span><span style={{ fontWeight: 600 }}>0 m.</span>
+            <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2 }}><div style={{ width: "85%", height: "100%", background: "#4f6df5", borderRadius: 2 }} /></div>
+            <span style={{ fontWeight: 600 }}>2.68 d.</span>
           </div>
         </div>
 
-        {/* Right — AI Chat Panel */}
+        {/* Zoom controls */}
+        <div style={{ position: "absolute", left: 20, bottom: 24, display: "flex", flexDirection: "column", gap: 4, zIndex: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>+</div>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.06)" }}>-</div>
+        </div>
+
+        {/* Floating: Namuda chat (right) */}
         {!chatOpen ? (
+          /* Minimized — orb at bottom-right */
           <div onClick={() => { setChatOpen(true); setHasNotified(true); }}
             style={{
-              width: 48, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e8ebf0",
-              display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16,
-              cursor: "pointer", position: "relative",
+              position: "absolute", bottom: 24, right: 24, width: 56, height: 56,
+              borderRadius: "50%", background: "#fff", border: "2px solid #e8ebf0",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", boxShadow: "0 4px 20px rgba(0,0,0,0.1)", zIndex: 12,
               animation: "slideInLeft 0.4s cubic-bezier(0.16,1,0.3,1) 0.4s both",
             }}>
-            <div style={{ position: "relative" }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <SparklesIcon size={14} color="#6366f1" />
-              </div>
-              {!hasNotified && (
-                <div style={{
-                  position: "absolute", top: -3, right: -3, width: 10, height: 10, borderRadius: "50%",
-                  background: "#6366f1", border: "2px solid #fff",
-                  animation: "notifyPulse 2s ease infinite, notifyShake 0.5s ease 3s infinite",
-                }} />
-              )}
-            </div>
-            <div style={{ writingMode: "vertical-rl", fontSize: 11, color: "#94a3b8", fontWeight: 500, marginTop: 12, letterSpacing: "0.3px" }}>AI Context</div>
+            <Blob state="idle" size={48} />
+            {!hasNotified && (
+              <div style={{
+                position: "absolute", top: -2, right: -2, width: 12, height: 12, borderRadius: "50%",
+                background: "#6366f1", border: "2.5px solid #fff",
+                animation: "notifyPulse 2s ease infinite, notifyShake 0.5s ease 3s infinite",
+              }} />
+            )}
           </div>
         ) : (
+          /* Expanded chat panel */
           <div style={{
-            width: 340, flexShrink: 0, background: "#fff", borderLeft: "1px solid #e8ebf0",
-            display: "flex", flexDirection: "column", animation: "chatSlideIn 0.3s ease",
+            position: "absolute", top: 16, right: 16, bottom: 16, width: 360,
+            background: "#fff", borderRadius: 14,
+            boxShadow: "0 4px 28px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.03)",
+            display: "flex", flexDirection: "column", zIndex: 12,
+            animation: "chatSlideIn 0.3s ease",
           }}>
-            {/* Chat header */}
-            <div style={{ padding: "12px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            {/* Header */}
+            <div style={{ padding: "10px 14px", borderBottom: "1px solid #f1f5f9", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: "#eef2ff", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <SparklesIcon size={12} color="#6366f1" />
+                <div style={{ width: 32, height: 32, borderRadius: "50%", overflow: "hidden", flexShrink: 0 }}>
+                  <Blob state="idle" size={32} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>AI Context</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>namuda</div>
                   <div style={{ fontSize: 11, color: "#94a3b8" }}>{aiContext.length} item{aiContext.length !== 1 ? "s" : ""} selected</div>
                 </div>
               </div>
@@ -1856,11 +1830,11 @@ function CanvasView() {
 
             {/* Context items */}
             {aiContext.length > 0 && (
-              <div style={{ padding: "8px 10px", maxHeight: 180, overflowY: "auto", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+              <div style={{ padding: "8px 10px", maxHeight: 160, overflowY: "auto", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
                 {aiContext.map((item, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px", borderRadius: 8, marginBottom: 4, background: "#f8fafc", fontSize: 12 }}>
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 8, marginBottom: 3, background: "#f8fafc", fontSize: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: item.type === "node" ? "#6366f1" : "#0ea5e9", letterSpacing: "0.5px", flexShrink: 0 }}>{item.type}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", color: typeColor(item.type), letterSpacing: "0.5px", flexShrink: 0 }}>{item.type}</span>
                       <span style={{ color: "#334155", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.label}</span>
                       {item.severity === "bottleneck" && <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#fef2f2", color: "#dc2626", flexShrink: 0 }}>bottleneck</span>}
                     </div>
@@ -1874,23 +1848,83 @@ function CanvasView() {
 
             {/* Chat messages */}
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Welcome message */}
-              <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#475569", lineHeight: 1.6, maxWidth: "90%" }}>
-                Click the sparkle icon on any node or edge to add it as context. Then ask me questions about bottlenecks, rework patterns, or improvement opportunities.
-              </div>
-              {chatMessages.map((msg, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-                  <div style={{
-                    padding: "10px 12px", borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "4px 12px 12px 12px",
-                    background: msg.role === "user" ? "#6366f1" : "#f8fafc",
-                    color: msg.role === "user" ? "#fff" : "#475569",
-                    fontSize: 12, lineHeight: 1.6, maxWidth: "85%",
-                  }}>{msg.text}</div>
+              {/* Welcome */}
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8ebf0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#5a5f6e" }}>N</span>
                 </div>
-              ))}
+                <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#475569", lineHeight: 1.6, maxWidth: "85%" }}>
+                  I'm here to help you explore this process. Add nodes, edges, or filters as context using the sparkle icons, and I'll help you find insights.
+                </div>
+              </div>
+              {chatMessages.map((msg, i) => {
+                if (msg.type === "finding") return (
+                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8ebf0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                      <span style={{ fontSize: 8, fontWeight: 700, color: "#5a5f6e" }}>N</span>
+                    </div>
+                    <div style={{ maxWidth: "90%", display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{
+                        padding: "12px 14px", borderRadius: "4px 12px 12px 12px",
+                        background: findingStored ? "#f0fdf4" : "linear-gradient(135deg, #fafaff, #f0f2ff)",
+                        border: findingStored ? "1.5px solid #86efac" : "1.5px solid #b8c4f5",
+                        animation: findingStored ? "findingStore 0.6s ease" : "findingGlow 2s ease infinite",
+                        transition: "all 0.3s ease",
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, background: findingStored ? "#dcfce7" : "#fef2f2", color: findingStored ? "#16a34a" : msg.sevColor }}>{findingStored ? "Stored" : msg.severity}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{msg.title}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#475569", lineHeight: 1.6, marginBottom: findingExpanded ? 8 : 0 }}>{msg.summary}</div>
+                        {findingExpanded && (
+                          <div style={{ fontSize: 11, color: "#6366f1", lineHeight: 1.6, padding: "8px 0", borderTop: "1px solid #e0e7ff", marginTop: 4 }}>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>Recommendation</div>
+                            {msg.recommendation}
+                          </div>
+                        )}
+                        {!findingStored && (
+                          <button onClick={() => setFindingExpanded(!findingExpanded)}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#6366f1", fontWeight: 600, padding: "4px 0", marginTop: 4 }}>
+                            {findingExpanded ? "Hide details" : "View details >"}
+                          </button>
+                        )}
+                      </div>
+                      {!findingStored && (
+                        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
+                          Should we store this and move on to the improvement process?
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <button onClick={storeFinding} style={{ padding: "6px 14px", borderRadius: 8, background: "#6366f1", color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>Yes, store finding</button>
+                            <button onClick={keepExploring} style={{ padding: "6px 14px", borderRadius: 8, background: "#f8fafc", color: "#64748b", border: "1px solid #e2e8f0", fontSize: 11, fontWeight: 500, cursor: "pointer" }}>Keep exploring</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+                return (
+                  <div key={i} style={{ display: "flex", justifyContent: msg.role === "user" ? "flex-end" : "flex-start", gap: 8 }}>
+                    {msg.role === "ai" && (
+                      <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8ebf0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: "#5a5f6e" }}>N</span>
+                      </div>
+                    )}
+                    <div style={{
+                      padding: "10px 12px", borderRadius: msg.role === "user" ? "12px 12px 4px 12px" : "4px 12px 12px 12px",
+                      background: msg.role === "user" ? "#6366f1" : "#f8fafc",
+                      color: msg.role === "user" ? "#fff" : "#475569",
+                      fontSize: 12, lineHeight: 1.6, maxWidth: "85%",
+                    }}>{msg.text}</div>
+                  </div>
+                );
+              })}
               {aiTyping && (
-                <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#94a3b8", maxWidth: "90%" }}>
-                  <span style={{ animation: "notifyPulse 1s ease infinite" }}>Thinking...</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: "#e8ebf0", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2 }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: "#5a5f6e" }}>N</span>
+                  </div>
+                  <div style={{ padding: "10px 12px", background: "#f8fafc", borderRadius: "4px 12px 12px 12px", fontSize: 12, color: "#94a3b8" }}>
+                    <span style={{ animation: "notifyPulse 1s ease infinite" }}>Thinking...</span>
+                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />
@@ -1918,12 +1952,11 @@ function CanvasView() {
 
       {/* Bottom bar */}
       <div style={{
-        padding: "6px 20px", borderTop: "1px solid #e8ebf0", background: "#fff", flexShrink: 0,
+        padding: "6px 20px", borderTop: "1px solid #e8ebf0", background: "#fff", flexShrink: 0, zIndex: 20,
         display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 10, color: "#a0a8b8",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span>35.9K cases</span>
-          <span>893K events</span>
+          <span>35.9K cases</span><span>893K events</span>
           <div style={{ width: 60, height: 6, background: "linear-gradient(90deg, #f0f2f5, #6366f1)", borderRadius: 3 }} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1933,9 +1966,7 @@ function CanvasView() {
               <div key={i} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#a0a8b8", cursor: "pointer" }}>{s}</div>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e" }}>
-            Cases
-          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e" }}>Cases</div>
         </div>
       </div>
     </div>
@@ -2860,6 +2891,8 @@ export default function App() {
         @keyframes notifyShake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-2px); } 40% { transform:translateX(2px); } 60% { transform:translateX(-1px); } 80% { transform:translateX(1px); } }
         @keyframes chatSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
         @keyframes sparkleAppear { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } }
+        @keyframes findingGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.2); } 50% { box-shadow: 0 0 0 6px rgba(99,102,241,0); } }
+        @keyframes findingStore { 0% { transform:scale(1); } 40% { transform:scale(0.97); background:#ecfdf5; } 100% { transform:scale(1); } }
       `}</style>
 
       {/* Top bar */}
