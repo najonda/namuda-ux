@@ -1458,6 +1458,7 @@ function CanvasView() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
   const [hasNotified, setHasNotified] = useState(false);
+  const [mutterIdx, setMutterIdx] = useState(0);
   const [hoveredNode, setHoveredNode] = useState(null);
   const [hoveredEdge, setHoveredEdge] = useState(null);
   const [hoveredBar, setHoveredBar] = useState(null);
@@ -1466,6 +1467,12 @@ function CanvasView() {
   const [findingExpanded, setFindingExpanded] = useState(false);
   const [userMsgCount, setUserMsgCount] = useState(0);
   const chatEndRef = useRef(null);
+  const MUTTERS = ["psst... over here", "hey, look 👀", "I see things...", "*ahem*", "tap me maybe?", "data wants to talk"];
+  useEffect(() => {
+    if (hasNotified || chatOpen) return;
+    const id = setInterval(() => setMutterIdx(i => (i + 1) % MUTTERS.length), 3200);
+    return () => clearInterval(id);
+  }, [hasNotified, chatOpen]);
 
   const addContext = (item) => {
     setAiContext(prev => {
@@ -1791,11 +1798,26 @@ function CanvasView() {
             }}>
             <Blob state="idle" size={48} />
             {!hasNotified && (
-              <div style={{
-                position: "absolute", top: -2, right: -2, width: 12, height: 12, borderRadius: "50%",
-                background: "#6366f1", border: "2.5px solid #fff",
-                animation: "notifyPulse 2s ease infinite, notifyShake 0.5s ease 3s infinite",
-              }} />
+              <>
+                <div style={{
+                  position: "absolute", top: -2, right: -2, width: 12, height: 12, borderRadius: "50%",
+                  background: "#6366f1", border: "2.5px solid #fff",
+                  animation: "notifyPulse 2s ease infinite, notifyShake 0.5s ease 3s infinite",
+                }} />
+                <div key={mutterIdx} style={{
+                  position: "absolute", bottom: "100%", right: 0, marginBottom: 8,
+                  background: "#1e293b", color: "#f8fafc", fontSize: 11.5, fontWeight: 500,
+                  fontStyle: "italic", padding: "5px 10px", borderRadius: 8, whiteSpace: "nowrap",
+                  animation: "mutterIn 0.4s ease", pointerEvents: "none",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                }}>
+                  {MUTTERS[mutterIdx]}
+                  <div style={{
+                    position: "absolute", bottom: -4, right: 16, width: 8, height: 8,
+                    background: "#1e293b", transform: "rotate(45deg)",
+                  }} />
+                </div>
+              </>
             )}
           </div>
         ) : (
@@ -2891,6 +2913,7 @@ export default function App() {
         @keyframes notifyShake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-2px); } 40% { transform:translateX(2px); } 60% { transform:translateX(-1px); } 80% { transform:translateX(1px); } }
         @keyframes chatSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
         @keyframes sparkleAppear { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } }
+        @keyframes mutterIn { from { opacity:0; transform:translateY(4px) scale(0.9); } to { opacity:1; transform:translateY(0) scale(1); } }
         @keyframes findingGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.2); } 50% { box-shadow: 0 0 0 6px rgba(99,102,241,0); } }
         @keyframes findingStore { 0% { transform:scale(1); } 40% { transform:scale(0.97); background:#ecfdf5; } 100% { transform:scale(1); } }
       `}</style>
