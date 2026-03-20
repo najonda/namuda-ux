@@ -1412,35 +1412,336 @@ function GoalsDocPanel({ data }) {
   );
 }
 
-/* ═══ JUNCTION PANEL ═══ */
-function JunctionPanel({ onSelect }) {
-  const findings = [
-    { id: "rework", rank: 1, label: "Rework loop analysis", impact: "High",
-      desc: "52% of orders loop through 'Confirmed Changed'. I've found patterns in which sites and item groups trigger this most.",
-      teaser: "I can show you exactly where the loop starts and which 3 changes would cut it by 30%." },
-    { id: "throughput", rank: 2, label: "Throughput bottlenecks", impact: "High",
-      desc: "The gap between PM1 (7.7d) and PN1 (34d) isn't just about volume — there are structural differences in how they process.",
-      teaser: "I've identified 2 approval steps that account for 60% of the delay at slow sites." },
-    { id: "conformance", rank: 3, label: "Variant reduction", impact: "Medium",
-      desc: "1,175 variants, but the top 8 cover 70% of cases. The remaining 1,167 are noise and special cases.",
-      teaser: "I can show which variants to standardize first for maximum impact." },
-    { id: "quality", rank: 4, label: "Data quality fixes", impact: "Medium",
-      desc: "selection_code nulls correlate with manual orders — fixing this at intake would unlock automation analysis.",
-      teaser: "Quick win: a single field-validation rule could improve the quality score by 15 points." },
+/* ═══ MISSION CONTROL OVERLAY ═══ */
+function MissionControlOverlay() {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "#0e0f14", zIndex: 100,
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      animation: "mcFadeIn 0.8s ease",
+    }}>
+      <div style={{ fontSize: 32, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>Mission Control</div>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", marginTop: 12 }}>Coming soon</div>
+    </div>
+  );
+}
+
+/* ═══ CANVAS VIEW — full-screen process mining canvas ═══ */
+function CanvasView() {
+  const nodes = [
+    { id: "start", label: "Start", x: 380, y: 20, w: 56, type: "circle" },
+    { id: "free", label: "Free", x: 310, y: 100, w: 140, h: 38, count: "215,350", color: "#e8a0b8" },
+    { id: "approved", label: "Approved", x: 340, y: 230, w: 130, h: 38, count: "59,759", color: "#b080d0" },
+    { id: "last_conf", label: "Last confirmation ...", x: 280, y: 360, w: 160, h: 38, count: "68,328", color: "#e8a0b8", warn: true },
+    { id: "first_conf", label: "First confirmation ...", x: 440, y: 480, w: 155, h: 38, count: "3,907", color: "#e0c8c0" },
+    { id: "blocked", label: "Blocked", x: 320, y: 590, w: 130, h: 38, count: "3,866", color: "#e0c8c0" },
+    { id: "end", label: "End", x: 250, y: 690, w: 56, type: "circle" },
   ];
+
+  const edges = [
+    { from: 0, to: 1, labels: ["215,350"] },
+    { from: 1, to: 2, labels: ["196,746", "10", "610"] },
+    { from: 2, to: 3, labels: ["145,414", "298"] },
+    { from: 3, to: 4, labels: ["39,498", "56,698", "584"] },
+    { from: 4, to: 5, labels: ["3,907", "5", "723"] },
+    { from: 5, to: 6, labels: ["215,597"] },
+    { from: 3, to: 2, rework: true, labels: ["59,759"] },
+    { from: 4, to: 3, rework: true, labels: ["68,328", "495"] },
+    { from: 1, to: 3, labels: ["130", "659"] },
+    { from: 2, to: 5, labels: ["57", "11"] },
+  ];
+
+  const kpis = [
+    { l: "Cases", v: "4,820", sub: "220,461" },
+    { l: "Events", v: "16,512", sub: "893,207" },
+    { l: "Activities", v: "5 / 5" },
+    { l: "Conformance", v: "72.45%", sub: "43.78%" },
+    { l: "Throughput", v: "7.05d", sub: "5.61d" },
+  ];
+
+  const variantData = [
+    { l: "Variant 1", v: 3492, hl: true }, { l: "Variant 2", v: 520, hl: true },
+    { l: "Variant 3", v: 328 }, { l: "Variant 5", v: 104 },
+    { l: "Variant 10", v: 72 }, { l: "Variant 4", v: 41 },
+  ];
+  const holdData = [
+    { l: "180", v: 73, hl: true }, { l: "250", v: 54, hl: true },
+    { l: "300", v: 34 }, { l: "221", v: 27 },
+    { l: "290", v: 13 }, { l: "270", v: 10 },
+  ];
+  const releaseData = [
+    { l: "Soft Released", v: 167, hl: true }, { l: "Firm Released", v: 72 }, { l: "Blocked", v: 8 },
+  ];
+
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", animation: "canvasEnter 0.7s cubic-bezier(0.16,1,0.3,1)" }}>
+      {/* Top filter bar */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 20px", borderBottom: "1px solid #e8ebf0", background: "#fff", flexShrink: 0, zIndex: 5,
+        animation: "slideInDown 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s both",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e", fontWeight: 500 }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1.5 3h9M3 1.5v1.5M9 1.5v1.5M1.5 5.25h9v4.5a.75.75 0 01-.75.75h-7.5a.75.75 0 01-.75-.75v-4.5z" stroke="#8a8f9e" strokeWidth="0.9"/></svg>
+            Period
+          </div>
+          <div style={{ fontSize: 11, color: "#7a8194" }}>Mar 20, 2025 – Mar 20, 2026</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e", fontWeight: 500 }}>
+            sales_office
+          </div>
+          <div style={{ fontSize: 11, color: "#7a8194" }}>1/30</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {kpis.map((k, i) => (
+            <div key={i} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 9, color: "#a0a8b8", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>{k.l}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1d23" }}>
+                {k.v}{k.sub && <span style={{ fontWeight: 400, color: "#a0a8b8" }}> / {k.sub}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+        {/* Left sidebar — supporting information */}
+        <div style={{
+          width: 310, flexShrink: 0, borderRight: "1px solid #e8ebf0", background: "#fff",
+          overflowY: "auto", padding: "16px 18px",
+          animation: "slideInLeft 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s both",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1d23" }}>Supporting information</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>^</div>
+              <div style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#a0a8b8", cursor: "pointer" }}>+</div>
+            </div>
+          </div>
+
+          {/* Frequency by variant name */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by variant name</div>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 9, color: "#a0a8b8", justifyContent: "flex-end" }}>
+              <span>#</span><span style={{ opacity: 0.5 }}>|</span>
+            </div>
+            {variantData.map((d, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                <div style={{ width: `${(d.v / 3492) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
+                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
+                </div>
+                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v.toLocaleString()}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
+              <span>Performance indicator</span>
+              <span style={{ fontWeight: 600 }}>6.83 m.</span>
+              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
+                <div style={{ width: "65%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
+              </div>
+              <span style={{ fontWeight: 600 }}>292.39 d.</span>
+            </div>
+          </div>
+
+          {/* Frequency by blocked hold reason code */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by blocked hold reason code</div>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
+            </div>
+            {holdData.map((d, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                <div style={{ width: `${(d.v / 73) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
+                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
+                </div>
+                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
+              <span>Performance indicator</span>
+              <span style={{ fontWeight: 600 }}>0</span>
+              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
+                <div style={{ width: "45%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
+              </div>
+              <span style={{ fontWeight: 600 }}>155.78 d.</span>
+            </div>
+          </div>
+
+          {/* Frequency by release type */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: "#3a3f4a" }}>Frequency by release type</div>
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="#a0a8b8" strokeWidth="1.2"/></svg>
+            </div>
+            {releaseData.map((d, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                <div style={{ width: `${(d.v / 167) * 100}%`, minWidth: 4, height: 18, background: d.hl ? "#7bc67e" : "#e0e2e8", borderRadius: 3, display: "flex", alignItems: "center", paddingLeft: 6 }}>
+                  <span style={{ fontSize: 9.5, color: "#fff", fontWeight: 600, whiteSpace: "nowrap" }}>{d.l}</span>
+                </div>
+                <span style={{ fontSize: 10, color: "#7a8194", fontWeight: 500, flexShrink: 0 }}>{d.v}</span>
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 10, color: "#7a8194" }}>
+              <span>Performance indicator</span>
+              <span style={{ fontWeight: 600 }}>0 m.</span>
+              <div style={{ flex: 1, height: 4, background: "#e0e2e8", borderRadius: 2, position: "relative" }}>
+                <div style={{ width: "85%", height: "100%", background: "#4f6df5", borderRadius: 2 }} />
+              </div>
+              <span style={{ fontWeight: 600 }}>2.68 d.</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Center — Process DAG */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", background: "#fafbfc", overflow: "auto" }}>
+          <svg width="800" height="750" viewBox="0 0 800 750" style={{
+            display: "block",
+            animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both",
+          }}>
+            {/* Edges */}
+            {edges.map((e, i) => {
+              const a = nodes[e.from], b = nodes[e.to];
+              const aw = a.w || 56, ah = a.h || (a.type === "circle" ? 28 : 38);
+              const bw = b.w || 56, bh = b.h || (b.type === "circle" ? 28 : 38);
+              const ax = a.x + aw / 2, ay = a.y + ah;
+              const bx = b.x + bw / 2, by = b.y;
+              if (e.rework) {
+                const cx = Math.max(ax, bx) + 80;
+                return <g key={`e${i}`}>
+                  <path d={`M${ax},${ay} C${cx},${ay} ${cx},${by} ${bx},${by}`}
+                    fill="none" stroke="#d0a0a0" strokeWidth="1.5" strokeDasharray="6 4" opacity="0.7" />
+                  {e.labels?.[0] && <text x={cx - 15} y={(ay + by) / 2} fontSize="9" fill="#b08080" textAnchor="end">{e.labels[0]}</text>}
+                </g>;
+              }
+              return <g key={`e${i}`}>
+                <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#c0c5d0" strokeWidth="1.5" />
+                <polygon points={`${(ax+bx)/2-3},${(ay+by)/2-2} ${(ax+bx)/2+3},${(ay+by)/2-2} ${(ax+bx)/2},${(ay+by)/2+3}`} fill="#c0c5d0" />
+                {e.labels && e.labels.map((lbl, li) => (
+                  <text key={li} x={(ax + bx) / 2 + (li - (e.labels.length - 1) / 2) * 45} y={(ay + by) / 2 - 8} fontSize="9" fill="#a0a8b8" textAnchor="middle">{lbl}</text>
+                ))}
+              </g>;
+            })}
+
+            {/* Nodes */}
+            {nodes.map((n, i) => {
+              if (n.type === "circle") {
+                return <g key={`n${i}`}>
+                  <circle cx={n.x + 28} cy={n.y + 14} r={18} fill="#fff" stroke="#c0c5d0" strokeWidth="1.5" />
+                  <text x={n.x + 28} y={n.y + 18} textAnchor="middle" fontSize="11" fontWeight="600" fill="#5a5f6e">{n.label}</text>
+                </g>;
+              }
+              const h = n.h || 38;
+              return <g key={`n${i}`}>
+                <rect x={n.x} y={n.y} width={n.w} height={h} rx="8"
+                  fill={n.color || "#e0e2e8"}
+                  stroke={n.warn ? "#d08080" : "rgba(160,168,184,0.3)"}
+                  strokeWidth={n.warn ? "2" : "1"}
+                  strokeDasharray={n.warn ? "4 3" : "none"} />
+                <text x={n.x + n.w / 2} y={n.y + h / 2 - 3} textAnchor="middle" fontSize="11" fontWeight="600" fill="#3a3040">{n.label}</text>
+                {n.count && <text x={n.x + n.w / 2} y={n.y + h / 2 + 11} textAnchor="middle" fontSize="9" fill="#7a7080">{n.count}</text>}
+              </g>;
+            })}
+
+            {/* Rework annotation */}
+            <text x="620" y="290" fontSize="10" fill="#d08080" fontWeight="600" fontStyle="italic">rework</text>
+            <text x="620" y="302" fontSize="10" fill="#d08080" fontStyle="italic">loop</text>
+          </svg>
+
+          {/* Right side zoom controls */}
+          <div style={{
+            position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
+            display: "flex", flexDirection: "column", gap: 4,
+          }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>+</div>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#fff", border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#5a5f6e", cursor: "pointer" }}>-</div>
+          </div>
+
+          {/* Analyze with AI button */}
+          <div style={{
+            position: "absolute", right: 20, top: 20,
+            padding: "8px 16px", background: "#fff", borderRadius: 8,
+            border: "1px solid #e2e5ea", display: "flex", alignItems: "center", gap: 8,
+            fontSize: 12, fontWeight: 600, color: "#1a1d23", cursor: "pointer",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+          }}>
+            Analyze with AI
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#4f6df5" strokeWidth="1.2"/><path d="M5 7h4M7 5v4" stroke="#4f6df5" strokeWidth="1.2"/></svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div style={{
+        padding: "6px 20px", borderTop: "1px solid #e8ebf0", background: "#fff", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 10, color: "#a0a8b8",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span>71.3K</span>
+          <span>314K</span>
+          <div style={{ width: 60, height: 6, background: "linear-gradient(90deg, #f0f2f5, #e8a0b8)", borderRadius: 3 }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span>69%</span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {["[]", ">>", "v"].map((s, i) => (
+              <div key={i} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #e2e5ea", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, color: "#a0a8b8", cursor: "pointer" }}>{s}</div>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", background: "#f0f2f5", borderRadius: 6, fontSize: 11, color: "#5a5f6e" }}>
+            Cases
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ JUNCTION PANEL ═══ */
+function JunctionPanel({ onSelect, goals }) {
+  const goalFindings = [
+    { goalIdx: 1, severity: "Critical", sevColor: "#c43030", label: "Lower rework rate",
+      finding: "52% Confirmed Changed loop — 3 sites above 60% rework rate" },
+    { goalIdx: 0, severity: "High", sevColor: "#d4685a", label: "Reduce throughput time",
+      finding: "Approval bottleneck accounts for 22% of total cycle time" },
+    { goalIdx: 3, severity: "High", sevColor: "#d4685a", label: "Increase conformance",
+      finding: "1,167 of 1,175 variants cover only 30% of cases" },
+    { goalIdx: 2, severity: "Medium", sevColor: "#e8b84a", label: "Improve data quality",
+      finding: "item_signal 95% null, selection_code 42% null" },
+  ];
+
+  const hoverIn = (e) => { e.currentTarget.style.borderColor = "#c0c5d0"; e.currentTarget.style.transform = "translateY(-1px)"; };
+  const hoverOut = (e) => { e.currentTarget.style.borderColor = "#e8ebf0"; e.currentTarget.style.transform = "translateY(0)"; };
 
   return (
     <div style={{ ...ps, width: 480, maxHeight: "85vh" }}>
       <div style={{ padding: "20px 22px 0" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1d23", marginBottom: 4 }}>What's next?</div>
         <div style={{ fontSize: 12, color: "#8a8f9e", marginBottom: 16, lineHeight: 1.5 }}>
-          I've ranked the most impactful areas to explore. Pick one to dive in, or take a tour of the process first.
+          Choose how you'd like to continue.
         </div>
       </div>
-      <div style={{ padding: "0 22px 12px", overflowY: "auto", maxHeight: "58vh" }}>
-        {/* Process canvas teaser — featured */}
+      <div style={{ padding: "0 22px 16px", overflowY: "auto", maxHeight: "62vh" }}>
+        {/* Option 1: Tour */}
+        <button onClick={() => onSelect("tour")} style={{
+          width: "100%", padding: "14px 16px", marginBottom: 8,
+          background: "#fff", border: "1.5px solid #e8ebf0", borderRadius: 10,
+          cursor: "pointer", textAlign: "left", transition: "all 0.15s",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1a1d23", marginBottom: 3 }}>Take a tour of Namuda</div>
+            <div style={{ fontSize: 11.5, color: "#7a8194", lineHeight: 1.5 }}>See how Mission Control works — a guided walkthrough of the platform.</div>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, marginLeft: 12 }}><path d="M6 4l4 4-4 4" stroke="#a0a8b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </button>
+
+        {/* Option 2: Canvas — featured */}
         <button onClick={() => onSelect("canvas")} style={{
-          width: "100%", padding: "16px 18px", marginBottom: 14,
+          width: "100%", padding: "16px 18px", marginBottom: 10,
           background: "linear-gradient(135deg, #f0f2ff 0%, #e8eaff 100%)",
           border: "1.5px solid #d0d5f5", borderRadius: 12, cursor: "pointer",
           textAlign: "left", display: "flex", gap: 14, alignItems: "center",
@@ -1449,44 +1750,49 @@ function JunctionPanel({ onSelect }) {
           onMouseEnter={e => { e.currentTarget.style.borderColor = "#4f6df5"; e.currentTarget.style.transform = "translateY(-1px)"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "#d0d5f5"; e.currentTarget.style.transform = "translateY(0)"; }}
         >
-          <div style={{ fontSize: 28, flexShrink: 0 }}>🗺</div>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#2a2e60", marginBottom: 3 }}>Explore the process canvas</div>
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" style={{ flexShrink: 0 }}>
+            <rect x="4" y="2" width="24" height="8" rx="3" fill="#b080d0" opacity="0.6"/>
+            <rect x="8" y="14" width="20" height="6" rx="2.5" fill="#e8a0b8" opacity="0.6"/>
+            <rect x="2" y="24" width="16" height="6" rx="2.5" fill="#e0c8c0" opacity="0.6"/>
+            <line x1="16" y1="10" x2="18" y2="14" stroke="#c0c5d0" strokeWidth="1"/>
+            <line x1="18" y1="20" x2="10" y2="24" stroke="#c0c5d0" strokeWidth="1"/>
+            <path d="M26 17 C32 17 32 11 24 8" stroke="#d0a0a0" strokeWidth="0.8" strokeDasharray="2 2" opacity="0.6"/>
+          </svg>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#2a2e60", marginBottom: 3 }}>Explore process in canvas</div>
             <div style={{ fontSize: 12, color: "#5a5f8a", lineHeight: 1.5 }}>
-              I can't wait to show you how your process looks! See every path, every bottleneck, every rework loop — all visualized.
+              See every path, bottleneck, and rework loop — fully visualized with filters and analytics.
             </div>
           </div>
-          <div style={{ fontSize: 18, color: "#4f6df5", flexShrink: 0 }}>→</div>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}><path d="M6 4l4 4-4 4" stroke="#4f6df5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
 
-        {/* Ranked findings */}
-        <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8 }}>Ranked improvement areas</div>
-        {findings.map(f => (
-          <button key={f.id} onClick={() => onSelect(f.id)} style={{
-            width: "100%", padding: "14px 16px", marginBottom: 8,
-            background: "#fff", border: "1.5px solid #e8ebf0", borderRadius: 10,
+        {/* Option 3: Start improving — with ranked goals */}
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: "#a0a8b8", textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 8, marginTop: 6 }}>Start improving</div>
+        <div style={{ fontSize: 11.5, color: "#7a8194", lineHeight: 1.5, marginBottom: 10 }}>
+          Jump into findings ranked by severity and start working on improvements.
+        </div>
+        {goalFindings.map((gf, i) => (
+          <button key={i} onClick={() => onSelect(`goal-${gf.goalIdx}`)} style={{
+            width: "100%", padding: "12px 14px", marginBottom: 6,
+            background: "#fff", border: "1.5px solid #e8ebf0", borderRadius: 9,
             cursor: "pointer", textAlign: "left", transition: "all 0.15s",
-          }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = "#c0c5d0"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = "#e8ebf0"; e.currentTarget.style.transform = "translateY(0)"; }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          }} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{
-                  width: 20, height: 20, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 700, color: "#fff",
-                  background: f.rank <= 2 ? "#4f6df5" : "#a0a8b8",
-                }}>{f.rank}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1d23" }}>{f.label}</div>
+                  width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 9, fontWeight: 700, color: "#fff", background: gf.sevColor,
+                }}>{i + 1}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1a1d23" }}>{gf.label}</div>
               </div>
               <div style={{
                 padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                background: f.impact === "High" ? "#fef3e8" : "#f0f2f5",
-                color: f.impact === "High" ? "#c47a20" : "#7a8194",
-              }}>{f.impact} impact</div>
+                background: gf.severity === "Critical" ? "#fde8e8" : gf.severity === "High" ? "#fef3e8" : "#f0f2f5",
+                color: gf.sevColor,
+              }}>{gf.severity}</div>
             </div>
-            <div style={{ fontSize: 12, color: "#5a5f6e", lineHeight: 1.5, marginBottom: 6 }}>{f.desc}</div>
-            <div style={{ fontSize: 11, color: "#4f6df5", fontWeight: 500 }}>{f.teaser}</div>
+            <div style={{ fontSize: 11.5, color: "#6a7086", lineHeight: 1.5, marginLeft: 26 }}>{gf.finding}</div>
           </button>
         ))}
       </div>
@@ -1604,7 +1910,7 @@ const steps = [
   { id: "goals", label: "Set goals", phases: ["pre-goals", "goals"] },
   { id: "targets", label: "Set targets", phases: ["targets"] },
   { id: "junction", label: "What's next", phases: ["junction"] },
-  { id: "done", label: "Explore", phases: ["done"] },
+  { id: "done", label: "Explore", phases: ["done", "tour", "canvas", "goal-dive"] },
 ];
 
 function StepMap({ phase, onJump, fieldProgress }) {
@@ -1736,6 +2042,7 @@ export default function App() {
   const [centerProcessFading, setCenterProcessFading] = useState(false);
   const [dqNarrativeStep, setDqNarrativeStep] = useState(0);
   const [ctxNarrativeStep, setCtxNarrativeStep] = useState(0);
+  const [canvasTransitionPhase, setCanvasTransitionPhase] = useState(null);
   const [qIdx, setQIdx] = useState(0);
   const [fieldIdx, setFieldIdx] = useState(0);
   const [mappedFields, setMappedFields] = useState(() => dimFields.map(f => ({ ...f, confirmed: false, meaning: f.guess })));
@@ -1936,7 +2243,9 @@ export default function App() {
       setBlob("thinking");
       setTimeout(() => { setBlob("waiting"); setBlobText("Pick from the options — or tell me what you'd like to explore."); }, 500);
 
-    } else if (phase === "done") {
+    } else if (phase === "tour" || phase === "canvas") {
+      // No text input handling for these phases
+    } else if (phase === "done" || phase === "goal-dive") {
       setBlob("thinking");
       setTimeout(() => { setBlob("waiting"); setBlobText("Ready to generate findings. What should we focus on?"); }, 700);
     }
@@ -2301,6 +2610,10 @@ export default function App() {
         @keyframes processEmerge { 0% { opacity:0; transform:scale(0.9) translateY(20px); } 50% { opacity:1; transform:scale(1.02) translateY(-4px); } 100% { opacity:1; transform:scale(1) translateY(0); } }
         @keyframes dp { 0%,100% { opacity:0.3; transform:scale(0.8); } 50% { opacity:1; transform:scale(1.15); } }
         @keyframes riseIn { 0% { opacity:0; transform:translateY(100vh); } 40% { opacity:0.6; } 100% { opacity:1; transform:translateY(0); } }
+        @keyframes canvasEnter { from { opacity:0; transform:scale(0.94); } to { opacity:1; transform:scale(1); } }
+        @keyframes slideInLeft { from { opacity:0; transform:translateX(-30px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes slideInDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes mcFadeIn { from { opacity:0; } to { opacity:1; } }
       `}</style>
 
       {/* Top bar */}
@@ -2312,8 +2625,14 @@ export default function App() {
         <span style={{ fontSize: 11.5, color: isDark ? "rgba(255,255,255,0.25)" : "#b0b5c0", transition: "color 1s" }}>improvement flow</span>
       </div>
 
+      {/* Mission Control overlay */}
+      {phase === "tour" && <MissionControlOverlay />}
+
+      {/* Canvas view — full screen */}
+      {phase === "canvas" && <CanvasView />}
+
       {/* Body */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative", ...(phase === "tour" || phase === "canvas" ? { display: "none" } : {}) }}>
 
         {/* DATA PROFILE — left side panel */}
         {panel === "data-profile" && (
@@ -2326,7 +2645,7 @@ export default function App() {
         )}
 
         {/* GOALS DOC — left during goals/targets phases */}
-        {hasGoalsDoc && !hasDoc && <GoalsDocPanel data={goalsDoc} />}
+        {hasGoalsDoc && !hasDoc && <div style={{ transition: canvasTransitionPhase === "exit" ? "opacity 0.6s, transform 0.6s" : "none", opacity: canvasTransitionPhase === "exit" ? 0 : 1, transform: canvasTransitionPhase === "exit" ? "translateX(-40px)" : "none" }}><GoalsDocPanel data={goalsDoc} /></div>}
 
         {/* REVIEW MODE — doc centered with approve button */}
         {isReview && hasDoc && (
@@ -2375,7 +2694,7 @@ export default function App() {
 
         {/* BLOB + CHAT column — pushes right when doc is visible */}
         {!isReview && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginRight: showProcessTeaser && !isThink && !hasDoc ? 352 : 0, transition: "margin 0.5s cubic-bezier(0.16,1,0.3,1)" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", overflow: "hidden", position: "relative", marginRight: showProcessTeaser && !isThink && !hasDoc ? 352 : 0, transition: canvasTransitionPhase === "exit" ? "opacity 0.5s, transform 0.5s" : "margin 0.5s cubic-bezier(0.16,1,0.3,1)", opacity: canvasTransitionPhase === "exit" ? 0 : 1, transform: canvasTransitionPhase === "exit" ? "translateY(-40px)" : "none" }}>
 
             {(isThink || !hasStarted) ? (
               <div style={{
@@ -2460,7 +2779,7 @@ export default function App() {
         {showProcessTeaser && !isThink && <ProcessTeaser onClose={() => setShowProcessTeaser(false)} />}
 
         {/* STEP MAP — right side (shift left when teaser is open) */}
-        {hasStarted && !isThink && !isDark && !showProcessTeaser && !showCenterProcess && <StepMap phase={phase} onJump={jumpTo} fieldProgress={(phase === "core-fields" || phase === "core-fields-reveal" || phase === "fields") ? { fields: mappedFields, currentIdx: fieldIdx } : null} />}
+        {hasStarted && !isThink && !isDark && !showProcessTeaser && !showCenterProcess && phase !== "tour" && phase !== "canvas" && <div style={{ transition: canvasTransitionPhase === "exit" ? "opacity 0.6s, transform 0.6s" : "none", opacity: canvasTransitionPhase === "exit" ? 0 : 1, transform: canvasTransitionPhase === "exit" ? "translateX(40px)" : "none" }}><StepMap phase={phase} onJump={jumpTo} fieldProgress={(phase === "core-fields" || phase === "core-fields-reveal" || phase === "fields") ? { fields: mappedFields, currentIdx: fieldIdx } : null} /></div>}
 
         {/* FLOATING PANEL */}
         {panel && !isThink && (
@@ -2478,14 +2797,24 @@ export default function App() {
                 onSkip={skipSingleTarget}
               />
             )}
-            {panel === "junction" && <JunctionPanel onSelect={(id) => {
+            {panel === "junction" && <JunctionPanel goals={goalsDoc?.goals || []} onSelect={(id) => {
               setPanel(null);
-              if (id === "canvas") {
-                setBlobText("Let me load the process canvas for you...");
-                setPhase("done");
-              } else {
-                const labels = { rework: "rework loop", throughput: "throughput bottlenecks", conformance: "variant reduction", quality: "data quality" };
-                setBlobText(`Great choice. Let me generate the ${labels[id] || id} findings...`);
+              if (id === "tour") {
+                setBlobText("");
+                setBgLight(0);
+                setTimeout(() => { setPhase("tour"); }, 1200);
+              } else if (id === "canvas") {
+                setBlobText("");
+                setCanvasTransitionPhase("exit");
+                setTimeout(() => {
+                  setCanvasTransitionPhase("enter");
+                  setPhase("canvas");
+                }, 1100);
+                setTimeout(() => { setCanvasTransitionPhase("ready"); }, 2200);
+              } else if (id.startsWith("goal-")) {
+                const goalIdx = parseInt(id.replace("goal-", ""));
+                const goalNames = ["Reduce throughput time", "Lower rework rate", "Improve data quality", "Increase conformance"];
+                setBlobText(`Great choice. Let me generate the ${goalNames[goalIdx] || "improvement"} findings...`);
                 setPhase("done");
               }
             }} />}
@@ -2495,7 +2824,7 @@ export default function App() {
       </div>
 
       {/* Input */}
-      <div style={{ padding: "12px 28px 20px", display: "flex", justifyContent: "center", flexShrink: 0, opacity: (introDone || hasStarted) && !isThink ? 1 : 0, transform: (introDone || hasStarted) && !isThink ? "translateY(0)" : "translateY(14px)", transition: "all 0.5s ease", pointerEvents: isThink ? "none" : "auto" }}>
+      {phase !== "tour" && phase !== "canvas" && <div style={{ padding: "12px 28px 20px", display: "flex", justifyContent: "center", flexShrink: 0, opacity: canvasTransitionPhase === "exit" ? 0 : ((introDone || hasStarted) && !isThink ? 1 : 0), transform: canvasTransitionPhase === "exit" ? "translateY(40px)" : ((introDone || hasStarted) && !isThink ? "translateY(0)" : "translateY(14px)"), transition: canvasTransitionPhase === "exit" ? "opacity 0.4s, transform 0.4s" : "all 0.5s ease", pointerEvents: isThink ? "none" : "auto" }}>
         <div style={{ width: "100%", maxWidth: 520, display: "flex", gap: 8 }}>
           <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
             placeholder={phase === "fact-gathering" ? "Answer or type 'skip'..." : "Type your response..."}
@@ -2506,7 +2835,7 @@ export default function App() {
           <button onClick={send} style={{ padding: "10px 17px", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans',sans-serif", background: "#1a1d23", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer" }}
             onMouseEnter={e => e.target.style.background = "#2d3340"} onMouseLeave={e => e.target.style.background = "#1a1d23"}>Send</button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
