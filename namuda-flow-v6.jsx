@@ -1451,6 +1451,14 @@ const CANVAS_FINDING = {
   summary: "Last Confirmation Print adds 5.7d avg to every case. The Approved self-loop (10,009 cases at 1.5d) creates compounding delays -- each re-approval cycle pushes cases back through the 2.3d Approved to LCP transition.",
   recommendation: "Investigate confirmation approval automation. Reduce re-approval triggers from the Approved self-loop. Consider fast-tracking orders that have already passed Blocked status.",
 };
+const NODE_POPUP_DATA = {
+  free: { throughputDist: [12,28,45,62,35,18,8], reworkRate: 15.6, sparkline: [20,35,28,42,38,45,32,40,36,44], issues: ["16% direct route to Blocked", "Low avg but high variance"] },
+  approved: { throughputDist: [5,15,22,38,55,42,28,12], reworkRate: 19.2, sparkline: [30,42,38,55,48,52,45,58,50,47], issues: ["10,009 self-loop re-approvals", "Re-approval adds 1.5d per cycle"] },
+  last_conf: { throughputDist: [2,8,12,18,35,52,45,30], reworkRate: 2.4, sparkline: [55,62,58,65,70,68,72,60,64,66], issues: ["Primary bottleneck: 5.7d average", "Manual confirmation step suspected"] },
+  blocked: { throughputDist: [18,32,42,28,15,8,3], reworkRate: 40.2, sparkline: [25,30,28,35,32,38,30,34,36,33], issues: ["68% of all cases pass through", "9,826 self-loop cycles at 7.0h each"] },
+};
+const EDGE_POPUP_DATA = { transitionDist: [8,22,38,45,32,18,10], volumeOverTime: [120,145,135,168,155,172,148,160,175,165,158,170] };
+const SEGMENT_POPUP_DATA = { avgTime: "4.2d", medianTime: "3.8d", histogram: [5,12,22,38,55,42,28,15,8,3], flowPct: 72.4, rangeMin: "0.5d", rangeMax: "15.2d" };
 
 function CanvasView() {
   const [aiContext, setAiContext] = useState([]);
@@ -1466,6 +1474,9 @@ function CanvasView() {
   const [findingStored, setFindingStored] = useState(false);
   const [findingExpanded, setFindingExpanded] = useState(false);
   const [userMsgCount, setUserMsgCount] = useState(0);
+  const [clickedPopup, setClickedPopup] = useState(null);
+  const [shiftSelected, setShiftSelected] = useState([]);
+  const [segmentPopup, setSegmentPopup] = useState(null);
   const chatEndRef = useRef(null);
   const MUTTERS = ["psst... over here", "hey, look 👀", "I see things...", "*ahem*", "tap me maybe?", "data wants to talk"];
   useEffect(() => {
@@ -1518,6 +1529,97 @@ function CanvasView() {
 
   const keepExploring = () => {
     setChatMessages(prev => [...prev, { role: "ai", text: "No problem -- let's keep digging. What else would you like to investigate?" }]);
+  };
+
+  const handleShiftClickNode = (nodeIdx) => {
+    if (nodes[nodeIdx]?.type === "circle") return;
+    setClickedPopup(null);
+    setShiftSelected(prev => {
+      if (prev.length === 0) return [nodeIdx];
+      if (prev[0] === nodeIdx) return prev;
+      const pair = [prev[0], nodeIdx];
+      setSegmentPopup({ from: pair[0], to: pair[1] });
+      return pair;
+    });
+  };
+
+  const handleNodeClick = (ev, i, n) => {
+    ev.stopPropagation();
+    if (ev.shiftKey) { handleShiftClickNode(i); return; }
+    setShiftSelected([]); setSegmentPopup(null);
+    setClickedPopup({ type: "node", index: i, x: n.x + (n.w || 180) / 2, y: n.y });
+  };
+
+  const handleEdgeClick = (ev, i, px, py) => {
+    ev.stopPropagation();
+    setShiftSelected([]); setSegmentPopup(null);
+    setClickedPopup({ type: "edge", index: i, x: px, y: py });
+  };
+
+  const dismissPopups = (ev) => {
+    if (ev.target !== ev.currentTarget) return;
+    setClickedPopup(null); setShiftSelected([]); setSegmentPopup(null);
+  };
+
+  const renderNodeCharts = (data) => {
+    const maxV = Math.max(...data.throughputDist);
+    const maxS = Math.max(...data.sparkline), minS = Math.min(...data.sparkline);
+    return (
+      <div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Throughput time distribution</div>
+          <svg width="248" height="48" viewBox="0 0 248 48">
+            {data.throughputDist.map((v, j) => {
+              const bw = 248 / data.throughputDist.length - 4, bh = (v / maxV) * 40;
+              return <rect key={j} x={j * (bw + 4)} y={40 - bh} width={bw} height={bh} rx="2" fill={v === maxV ? "#6366f1" : "#e0e7ff"} />;
+            })}
+          </svg>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#94a3b8", marginBottom: 2 }}>Rework rate</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: data.reworkRate > 20 ? "#dc2626" : "#1e293b" }}>{data.reworkRate}%</div>
+          </div>
+          <svg width="80" height="24" viewBox="0 0 80 24">
+            <polyline fill="none" stroke="#6366f1" strokeWidth="1.5"
+              points={data.sparkline.map((v, j) => `${j * 9},${22 - ((v - minS) / (maxS - minS)) * 20}`).join(" ")} />
+          </svg>
+        </div>
+        <div style={{ borderTop: "1px solid #f1f5f9", paddingTop: 8 }}>
+          {data.issues.map((iss, j) => (
+            <div key={j} style={{ fontSize: 10, color: "#64748b", lineHeight: "18px", display: "flex", gap: 4 }}>
+              <span style={{ color: "#f59e0b" }}>!</span> {iss}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderEdgeCharts = (data) => {
+    const maxV = Math.max(...data.transitionDist);
+    const vol = data.volumeOverTime, maxVol = Math.max(...vol), minVol = Math.min(...vol);
+    return (
+      <div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Transition time distribution</div>
+          <svg width="228" height="48" viewBox="0 0 228 48">
+            {data.transitionDist.map((v, j) => {
+              const bw = 228 / data.transitionDist.length - 4, bh = (v / maxV) * 40;
+              return <rect key={j} x={j * (bw + 4)} y={40 - bh} width={bw} height={bh} rx="2" fill={v === maxV ? "#0ea5e9" : "#e0f2fe"} />;
+            })}
+          </svg>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Volume over time</div>
+          <svg width="228" height="40" viewBox="0 0 228 40">
+            <polyline fill="none" stroke="#0ea5e9" strokeWidth="1.5"
+              points={vol.map((v, j) => `${j * (228 / (vol.length - 1))},${36 - ((v - minVol) / (maxVol - minVol)) * 32}`).join(" ")} />
+            <line x1="0" y1="38" x2="228" y2="38" stroke="#e2e8f0" strokeWidth="0.5" />
+          </svg>
+        </div>
+      </div>
+    );
   };
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages, aiTyping]);
@@ -1633,7 +1735,7 @@ function CanvasView() {
         <DotBackground isDark={false} />
 
         {/* Process DAG — centered */}
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+        <div onClick={dismissPopups} style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1 }}>
           <div style={{ position: "relative", width: 720, height: 700, animation: "canvasEnter 0.6s cubic-bezier(0.16,1,0.3,1) 0.3s both" }}>
             <svg width="720" height="700" viewBox="0 0 720 700" style={{ position: "absolute", inset: 0 }}>
               {edges.map((e, i) => {
@@ -1681,6 +1783,7 @@ function CanvasView() {
               const isHovered = hoveredEdge === i;
               return (
                 <div key={`ep${i}`} onMouseEnter={() => setHoveredEdge(i)} onMouseLeave={() => setHoveredEdge(null)}
+                  onClick={(ev) => handleEdgeClick(ev, i, px, py)}
                   style={{
                     position: "absolute", left: px, top: py, transform: "translate(-50%, -50%)",
                     display: "flex", alignItems: "center", gap: 4,
@@ -1688,7 +1791,7 @@ function CanvasView() {
                     border: `1px solid ${e.isBottleneck ? "#fecaca" : "#e5e7eb"}`,
                     borderRadius: 8, padding: "3px 8px", fontSize: 10, fontWeight: 500,
                     color: e.isBottleneck ? "#991b1b" : "#64748b",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "default", whiteSpace: "nowrap",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.04)", cursor: "pointer", whiteSpace: "nowrap",
                     zIndex: isHovered ? 20 : 2,
                   }}>
                   {e.isBottleneck && <svg width="8" height="8" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="#dc2626" strokeWidth="1.5" fill="none"/><line x1="8" y1="6" x2="8" y2="10" stroke="#dc2626" strokeWidth="1.5"/><circle cx="8" cy="12" r="0.8" fill="#dc2626"/></svg>}
@@ -1715,13 +1818,16 @@ function CanvasView() {
                 </div>
               );
               const isHovered = hoveredNode === i;
+              const isShiftSel = shiftSelected.includes(i);
               return (
                 <div key={`n${i}`} onMouseEnter={() => setHoveredNode(i)} onMouseLeave={() => setHoveredNode(null)}
+                  onClick={(ev) => handleNodeClick(ev, i, n)}
                   style={{ position: "absolute", left: n.x, top: n.y, width: n.w, height: n.h || 60,
-                    background: n.color || "#f8fafc", border: `2px solid ${n.borderColor || "#e2e8f0"}`,
+                    background: n.color || "#f8fafc",
+                    border: isShiftSel ? "2.5px solid #6366f1" : `2px solid ${n.borderColor || "#e2e8f0"}`,
                     borderRadius: 10, padding: "10px 14px",
-                    boxShadow: isHovered ? "0 4px 16px rgba(0,0,0,0.1)" : "0 1px 3px rgba(0,0,0,0.05)",
-                    cursor: "default", transition: "box-shadow 0.15s ease" }}>
+                    boxShadow: isShiftSel ? "0 0 0 3px rgba(99,102,241,0.2), 0 4px 16px rgba(99,102,241,0.15)" : isHovered ? "0 4px 16px rgba(0,0,0,0.1)" : "0 1px 3px rgba(0,0,0,0.05)",
+                    cursor: "pointer", transition: "box-shadow 0.15s ease, border 0.15s ease" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     {n.bottleneck && <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1L1 14h14L8 1z" stroke="#dc2626" strokeWidth="1.5" fill="none"/><line x1="8" y1="6" x2="8" y2="10" stroke="#dc2626" strokeWidth="1.5"/><circle cx="8" cy="12" r="0.8" fill="#dc2626"/></svg>}
                     <span style={{ fontSize: 12.5, fontWeight: 600, color: n.bottleneck ? "#991b1b" : "#1e293b", lineHeight: "16px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.label}</span>
@@ -1742,6 +1848,120 @@ function CanvasView() {
                 </div>
               );
             })}
+
+            {/* Click popup (node or edge) */}
+            {clickedPopup && (() => {
+              const isNode = clickedPopup.type === "node";
+              const PW = isNode ? 280 : 260;
+              const ax = clickedPopup.x, ay = clickedPopup.y;
+              const nh = isNode ? (nodes[clickedPopup.index]?.h || 60) : 0;
+              let arrowDown = ay > 200;
+              let popTop = arrowDown ? undefined : (ay + nh + 14);
+              let popBottom = arrowDown ? (700 - ay + 14) : undefined;
+              let popLeft = ax - PW / 2;
+              if (popLeft < 10) popLeft = 10;
+              if (popLeft + PW > 710) popLeft = 710 - PW;
+              const popData = isNode ? (NODE_POPUP_DATA[nodes[clickedPopup.index]?.id] || NODE_POPUP_DATA.free) : EDGE_POPUP_DATA;
+              const label = isNode ? nodes[clickedPopup.index]?.label : `${nodes[edges[clickedPopup.index]?.from]?.label} → ${nodes[edges[clickedPopup.index]?.to]?.label}`;
+              return (
+                <div style={{ position: "absolute", left: popLeft, ...(arrowDown ? { bottom: popBottom } : { top: popTop }), width: PW,
+                  background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
+                  padding: "14px 16px", zIndex: 30, animation: "popupAppear 0.2s cubic-bezier(0.16,1,0.3,1)" }}>
+                  <div style={{ position: "absolute", [arrowDown ? "bottom" : "top"]: -6, left: "50%", marginLeft: -6,
+                    width: 12, height: 12, background: "#fff", transform: "rotate(45deg)",
+                    boxShadow: arrowDown ? "2px 2px 4px rgba(0,0,0,0.06)" : "-2px -2px 4px rgba(0,0,0,0.06)" }} />
+                  <button onClick={(ev) => { ev.stopPropagation(); setClickedPopup(null); }}
+                    style={{ position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: "50%",
+                      background: "#f1f5f9", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, color: "#94a3b8" }}>×</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px",
+                      color: isNode ? "#6366f1" : "#0ea5e9", padding: "2px 6px", borderRadius: 3,
+                      background: isNode ? "rgba(99,102,241,0.1)" : "rgba(14,165,233,0.1)" }}>{clickedPopup.type}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{label}</span>
+                  </div>
+                  {isNode ? renderNodeCharts(popData) : renderEdgeCharts(popData)}
+                </div>
+              );
+            })()}
+
+            {/* Segment performance popup (shift-click two nodes) */}
+            {segmentPopup && (() => {
+              const fn = nodes[segmentPopup.from], tn = nodes[segmentPopup.to];
+              if (!fn || !tn) return null;
+              const SPW = 360, midY = (fn.y + tn.y + (tn.h || 60)) / 2;
+              const popLeft = (720 - SPW) / 2, popTop = Math.max(20, midY - 170);
+              const sd = SEGMENT_POPUP_DATA, maxH = Math.max(...sd.histogram);
+              return (
+                <div onClick={(ev) => ev.stopPropagation()} style={{ position: "absolute", left: popLeft, top: popTop, width: SPW,
+                  background: "#fff", borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04)",
+                  padding: "18px 20px", zIndex: 30, animation: "popupAppear 0.25s cubic-bezier(0.16,1,0.3,1)" }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b", marginBottom: 14 }}>Throughput Time</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, marginBottom: 3, letterSpacing: "0.3px" }}>START ACTIVITY</div>
+                      <div style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 500, color: "#1e293b",
+                        display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        {fn.label}
+                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" stroke="#94a3b8" strokeWidth="1.2" fill="none"/></svg>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 14 }}>→</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600, marginBottom: 3, letterSpacing: "0.3px" }}>END ACTIVITY</div>
+                      <div style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #e2e8f0", fontSize: 12, fontWeight: 500, color: "#1e293b",
+                        display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        {tn.label}
+                        <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 4l3 3 3-3" stroke="#94a3b8" strokeWidth="1.2" fill="none"/></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 20, marginBottom: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>AVG TIME</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>{sd.avgTime}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>MEDIAN</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#1e293b" }}>{sd.medianTime}</div>
+                    </div>
+                    <div style={{ marginLeft: "auto" }}>
+                      <div style={{ fontSize: 9, color: "#94a3b8", fontWeight: 600 }}>EVENT FLOWS</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#6366f1" }}>{sd.flowPct}%</div>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>Throughput time</div>
+                    <svg width="320" height="60" viewBox="0 0 320 60">
+                      {sd.histogram.map((v, j) => {
+                        const bw = 320 / sd.histogram.length - 3, bh = (v / maxH) * 50;
+                        return <rect key={j} x={j * (bw + 3)} y={50 - bh} width={bw} height={bh} rx={2} fill={j >= 3 && j <= 6 ? "#6366f1" : "#e0e7ff"} />;
+                      })}
+                    </svg>
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ position: "relative", height: 6, background: "#e2e8f0", borderRadius: 3 }}>
+                      <div style={{ position: "absolute", left: "15%", right: "30%", height: "100%", background: "#6366f1", borderRadius: 3 }} />
+                      <div style={{ position: "absolute", left: "15%", top: -4, width: 14, height: 14, borderRadius: "50%", background: "#fff", border: "2px solid #6366f1", transform: "translateX(-50%)" }} />
+                      <div style={{ position: "absolute", right: "30%", top: -4, width: 14, height: 14, borderRadius: "50%", background: "#fff", border: "2px solid #6366f1", transform: "translateX(50%)" }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", marginTop: 6 }}>
+                      <span>{sd.rangeMin}</span>
+                      <span>{sd.rangeMax}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 12 }}>{sd.flowPct}% event flows are selected</div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button onClick={(ev) => { ev.stopPropagation(); setSegmentPopup(null); setShiftSelected([]); }}
+                      style={{ padding: "7px 16px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0",
+                        fontSize: 11, fontWeight: 500, color: "#64748b", cursor: "pointer" }}>Cancel</button>
+                    <button onClick={(ev) => { ev.stopPropagation(); setSegmentPopup(null); setShiftSelected([]); }}
+                      style={{ padding: "7px 16px", borderRadius: 8, background: "#6366f1", border: "none",
+                        fontSize: 11, fontWeight: 600, color: "#fff", cursor: "pointer" }}>Apply Filter</button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -2914,6 +3134,7 @@ export default function App() {
         @keyframes chatSlideIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
         @keyframes sparkleAppear { from { opacity:0; transform:scale(0.5); } to { opacity:1; transform:scale(1); } }
         @keyframes mutterIn { from { opacity:0; transform:translateY(4px) scale(0.9); } to { opacity:1; transform:translateY(0) scale(1); } }
+        @keyframes popupAppear { from { opacity:0; transform:translateY(6px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
         @keyframes findingGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.2); } 50% { box-shadow: 0 0 0 6px rgba(99,102,241,0); } }
         @keyframes findingStore { 0% { transform:scale(1); } 40% { transform:scale(0.97); background:#ecfdf5; } 100% { transform:scale(1); } }
       `}</style>
