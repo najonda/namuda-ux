@@ -1854,22 +1854,24 @@ function CanvasView() {
               const isNode = clickedPopup.type === "node";
               const PW = isNode ? 280 : 260;
               const ax = clickedPopup.x, ay = clickedPopup.y;
+              const nw = isNode ? (nodes[clickedPopup.index]?.w || 180) : 0;
               const nh = isNode ? (nodes[clickedPopup.index]?.h || 60) : 0;
-              let arrowDown = ay > 200;
-              let popTop = arrowDown ? undefined : (ay + nh + 14);
-              let popBottom = arrowDown ? (700 - ay + 14) : undefined;
-              let popLeft = ax - PW / 2;
-              if (popLeft < 10) popLeft = 10;
-              if (popLeft + PW > 710) popLeft = 710 - PW;
+              // Show to the right by default, left if too close to right edge
+              const rightSide = (ax + nw / 2 + 14 + PW) < 720;
+              let popLeft = rightSide ? (ax + nw / 2 + 14) : (ax - nw / 2 - 14 - PW);
+              let popTop = ay + nh / 2 - 60; // vertically center-ish near element
+              if (popTop < 10) popTop = 10;
+              if (popTop + 200 > 690) popTop = 490;
+              if (popLeft < 5) popLeft = 5;
               const popData = isNode ? (NODE_POPUP_DATA[nodes[clickedPopup.index]?.id] || NODE_POPUP_DATA.free) : EDGE_POPUP_DATA;
               const label = isNode ? nodes[clickedPopup.index]?.label : `${nodes[edges[clickedPopup.index]?.from]?.label} → ${nodes[edges[clickedPopup.index]?.to]?.label}`;
               return (
-                <div style={{ position: "absolute", left: popLeft, ...(arrowDown ? { bottom: popBottom } : { top: popTop }), width: PW,
+                <div style={{ position: "absolute", left: popLeft, top: popTop, width: PW,
                   background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)",
                   padding: "14px 16px", zIndex: 30, animation: "popupAppear 0.2s cubic-bezier(0.16,1,0.3,1)" }}>
-                  <div style={{ position: "absolute", [arrowDown ? "bottom" : "top"]: -6, left: "50%", marginLeft: -6,
+                  <div style={{ position: "absolute", [rightSide ? "left" : "right"]: -6, top: 60,
                     width: 12, height: 12, background: "#fff", transform: "rotate(45deg)",
-                    boxShadow: arrowDown ? "2px 2px 4px rgba(0,0,0,0.06)" : "-2px -2px 4px rgba(0,0,0,0.06)" }} />
+                    boxShadow: rightSide ? "-2px 2px 4px rgba(0,0,0,0.06)" : "2px -2px 4px rgba(0,0,0,0.06)" }} />
                   <button onClick={(ev) => { ev.stopPropagation(); setClickedPopup(null); }}
                     style={{ position: "absolute", top: 8, right: 8, width: 20, height: 20, borderRadius: "50%",
                       background: "#f1f5f9", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
@@ -1881,6 +1883,17 @@ function CanvasView() {
                     <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>{label}</span>
                   </div>
                   {isNode ? renderNodeCharts(popData) : renderEdgeCharts(popData)}
+                  <button onClick={(ev) => {
+                    ev.stopPropagation();
+                    const n = nodes[clickedPopup.index], e = edges[clickedPopup.index];
+                    if (isNode) addContext({ type: "node", label: n.label, count: n.count, avgDuration: n.avgDuration, severity: n.bottleneck ? "bottleneck" : "none" });
+                    else addContext({ type: "edge", id: `${nodes[e.from].label} > ${nodes[e.to].label}`, label: `${nodes[e.from].label} > ${nodes[e.to].label}`, count: e.count, avgDuration: e.avgDuration, severity: e.isBottleneck ? "bottleneck" : "none" });
+                    setClickedPopup(null);
+                  }} style={{ marginTop: 10, width: "100%", padding: "7px 0", borderRadius: 8, border: "1px solid #e0e7ff",
+                    background: "rgba(99,102,241,0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    fontSize: 11, fontWeight: 600, color: "#6366f1" }}>
+                    <SparklesIcon size={10} color="#6366f1" /> Add to context
+                  </button>
                 </div>
               );
             })()}
