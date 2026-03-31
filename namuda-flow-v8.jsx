@@ -4370,6 +4370,7 @@ function ImprovementView({ storedFindings, onBack }) {
         setImpStep(3);
       },
       onCancel: () => {
+        setProblemStatement(draft);
         setRefineState(null);
         setBlob("waiting");
         setImpStep(3);
@@ -4422,6 +4423,7 @@ function ImprovementView({ storedFindings, onBack }) {
           setImpStep(4);
         },
         onCancel: () => {
+          setRootCause(levelData.rootCause);
           setRefineState(null);
           setBlob("waiting");
           setImpStep(4);
@@ -4444,9 +4446,6 @@ function ImprovementView({ storedFindings, onBack }) {
         if (chosen.evidence) {
           newNode.evidence = chosen.evidence;
           setCurrentEvidence(chosen.evidence);
-          if (!evidenceCards.includes(chosen.evidence)) {
-            setEvidenceCards(prev => [...prev, chosen.evidence]);
-          }
         }
         setWhyTree(prev => [...prev, newNode]);
         setActiveChoice(null);
@@ -4483,20 +4482,7 @@ function ImprovementView({ storedFindings, onBack }) {
     }
     setBlobText("Here are recommended countermeasures. Select the ones you want to pursue:");
     setCounterMeasures(cmData.map(cm => ({ ...cm, selected: cm.defaultSelected })));
-    setActiveChoice({
-      question: "Which countermeasures should we pursue?",
-      options: cmData.map(cm => ({
-        label: cm.desc,
-        desc: `Impact: ${cm.impact} · Effort: ${cm.effort}`,
-      })),
-      // For step 4, we use toggle-style selection rather than single-select
-      onSelect: (idx) => {
-        if (idx >= 0 && idx < cmData.length) {
-          setCounterMeasures(prev => prev.map((cm, i) => i === idx ? { ...cm, selected: !cm.selected } : cm));
-        }
-        // Don't auto-advance — user clicks "Accept selected" button
-      },
-    });
+    setActiveChoice(null);
     setBlob("waiting");
   }, [impStep, primaryFinding]);
 
@@ -4637,22 +4623,37 @@ function ImprovementView({ storedFindings, onBack }) {
               />
             )}
 
-            {/* Step 4: Accept selected countermeasures button */}
-            {impStep === 4 && activeChoice && (
-              <div style={{ padding: "8px 24px 16px" }}>
-                <button
-                  onClick={acceptCountermeasures}
-                  style={{
-                    width: "100%", padding: "12px 0", fontSize: 13, fontWeight: 600,
-                    fontFamily: T.font, background: T.accent.blue, color: T.text.inverse,
-                    border: "none", borderRadius: T.radius.sm, cursor: "pointer",
-                    transition: "opacity 0.2s",
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
-                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}
-                >
-                  Accept selected ({counterMeasures.filter(cm => cm.selected).length})
-                </button>
+            {/* Step 4: Custom multi-select countermeasure cards */}
+            {impStep === 4 && !activeChoice && !refineState && counterMeasures.length > 0 && (
+              <div style={{ padding: "16px 24px" }}>
+                <div style={{ fontSize: 12, fontWeight: 500, color: T.text.secondary, marginBottom: 10 }}>Select countermeasures to include:</div>
+                {counterMeasures.map((cm, i) => (
+                  <div key={cm.id} onClick={() => setCounterMeasures(prev => prev.map((c, ci) => ci === i ? {...c, selected: !c.selected} : c))}
+                    style={{
+                      padding: "10px 12px", marginBottom: 6, borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${cm.selected ? T.accent.blue : T.border.light}`,
+                      background: cm.selected ? `${T.accent.blue}06` : T.bg.surface,
+                      transition: "all 0.15s",
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 4, border: `1.5px solid ${cm.selected ? T.accent.blue : T.border.focus}`, background: cm.selected ? T.accent.blue : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>
+                        {cm.selected && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l2.5 2.5L9 1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color: T.text.primary }}>{cm.desc}</div>
+                        <div style={{ display: "flex", gap: 12, fontSize: 9, color: T.text.muted, marginTop: 2 }}>
+                          <span>Impact: <span style={{ fontWeight: 600, color: cm.impact === "High" ? "#7bc67e" : T.text.secondary }}>{cm.impact}</span></span>
+                          <span>Effort: <span style={{ fontWeight: 600, color: cm.effort === "High" ? "#d4685a" : T.text.secondary }}>{cm.effort}</span></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={acceptCountermeasures} style={{
+                  width: "100%", padding: "10px 0", marginTop: 8, fontSize: 12, fontWeight: 600,
+                  background: T.accent.blue, color: T.text.inverse,
+                  border: "none", borderRadius: T.radius.sm, cursor: "pointer", fontFamily: T.font,
+                }}>Accept selected ({counterMeasures.filter(cm => cm.selected).length})</button>
               </div>
             )}
 
@@ -4721,7 +4722,7 @@ function ImprovementView({ storedFindings, onBack }) {
             )}
 
             {/* No active widget — show back button */}
-            {!activeChoice && !refineState && impStep !== 5 && impStep !== 6 && (
+            {!activeChoice && !refineState && impStep !== 4 && impStep !== 5 && impStep !== 6 && (
               <div style={{ padding: "12px 24px" }}>
                 <button
                   onClick={onBack}
