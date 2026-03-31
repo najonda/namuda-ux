@@ -4094,6 +4094,130 @@ function EvidencePanel({ evidenceKey, onAddToPlan, addedKeys }) {
   );
 }
 
+/* ═══ IMPROVEMENT PLAN PANEL (left side, builds live) ═══ */
+function ImprovementPlanPanel({ goal, findings, problemStatement, whyTree, rootCause, counterMeasures, evidenceCards, step }) {
+  return (
+    <div style={{
+      position: "absolute", top: 16, left: 16, width: 460, bottom: 80,
+      background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)",
+      borderRadius: T.radius.lg, boxShadow: T.shadow.lg,
+      border: `1px solid ${T.border.light}`,
+      zIndex: 15, overflow: "hidden", display: "flex", flexDirection: "column",
+      animation: "docIn 0.6s cubic-bezier(0.16,1,0.3,1)",
+    }}>
+      <div style={{ padding: "16px 20px 12px", borderBottom: `1px solid ${T.border.light}` }}>
+        <div style={{ fontSize: 9, fontWeight: 600, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Improvement Plan</div>
+        {goal && <div style={{ fontSize: 14, fontWeight: 700, color: T.text.primary }}>{goal.n}</div>}
+        {goal && <div style={{ fontSize: 11, color: T.accent.blue, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>{goal.b} → {goal.t}</div>}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+        {/* Findings section */}
+        {findings.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Findings</div>
+            {findings.map(fid => {
+              const f = CANVAS_FINDINGS.find(cf => cf.id === fid);
+              if (!f) return null;
+              return (
+                <div key={fid} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", marginBottom: 4, borderRadius: 6, background: `${f.sevColor}06`, border: `1px solid ${f.sevColor}15` }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: f.sevColor, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, fontWeight: 500, color: T.text.primary }}>{f.title}</span>
+                  <span style={{ fontSize: 8, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: `${f.sevColor}12`, color: f.sevColor, marginLeft: "auto" }}>{f.severity}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Problem Statement */}
+        {problemStatement && (
+          <div style={{ marginBottom: 20, animation: "fadeUp 0.4s ease" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Problem Statement</div>
+            <div style={{ fontSize: 12, color: T.text.secondary, lineHeight: 1.7, padding: "12px 14px", background: T.bg.light, borderRadius: 8, borderLeft: `3px solid ${T.accent.blue}`, fontStyle: "italic" }}>
+              "{problemStatement}"
+            </div>
+          </div>
+        )}
+
+        {/* Root Cause Tree */}
+        {whyTree.length > 0 && (
+          <div style={{ marginBottom: 20, animation: "fadeUp 0.4s ease" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Root Cause Analysis</div>
+            {whyTree.map((node, i) => (
+              <div key={i} style={{ paddingLeft: i * 16, marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  {i > 0 && <div style={{ width: 12, height: 12, borderLeft: `1.5px solid ${T.border.focus}`, borderBottom: `1.5px solid ${T.border.focus}`, borderRadius: "0 0 0 4px", marginTop: 2, flexShrink: 0 }} />}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: T.text.primary, lineHeight: 1.5 }}>
+                      {node.answer}
+                    </div>
+                    {node.tag === "data" && (
+                      <span style={{ fontSize: 8, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: `${T.accent.blue}12`, color: T.accent.blue, marginTop: 2, display: "inline-block" }}>data</span>
+                    )}
+                    {node.evidence && evidenceCards.includes(node.evidence) && (
+                      <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 4, background: `${T.accent.blue}06`, border: `1px solid ${T.accent.blue}15`, fontSize: 9, color: T.accent.blue, fontWeight: 500 }}>
+                        📊 {EVIDENCE_VISUALS[node.evidence]?.title}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {rootCause && (
+              <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, background: "linear-gradient(135deg, #fafaff, #f0f2ff)", border: `1.5px solid ${T.border.accent}` }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.accent.blue, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Root Cause</div>
+                <div style={{ fontSize: 11.5, color: T.text.primary, lineHeight: 1.6, fontWeight: 500 }}>{rootCause}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Countermeasures */}
+        {counterMeasures.filter(cm => cm.selected).length > 0 && (
+          <div style={{ marginBottom: 20, animation: "fadeUp 0.4s ease" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>Countermeasures</div>
+            {counterMeasures.filter(cm => cm.selected).map((cm, i) => (
+              <div key={cm.id} style={{ padding: "10px 12px", marginBottom: 6, borderRadius: 8, border: `1px solid ${T.border.light}`, background: T.bg.surface }}>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: T.text.primary, marginBottom: 4 }}>{i + 1}. {cm.desc}</div>
+                <div style={{ display: "flex", gap: 12, fontSize: 9, color: T.text.muted }}>
+                  <span>Impact: <span style={{ fontWeight: 600, color: cm.impact === "High" ? "#7bc67e" : T.text.secondary }}>{cm.impact}</span></span>
+                  <span>Effort: <span style={{ fontWeight: 600, color: cm.effort === "High" ? "#d4685a" : T.text.secondary }}>{cm.effort}</span></span>
+                </div>
+                {cm.tasks && cm.tasks.filter(t => t.owner || t.dueDate).length > 0 && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border.light}` }}>
+                    {cm.tasks.filter(t => t.owner || t.dueDate).map((t, ti) => (
+                      <div key={ti} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, fontSize: 10, color: T.text.secondary }}>
+                        <span style={{ color: T.accent.blue }}>→</span>
+                        <span style={{ flex: 1 }}>{t.name}</span>
+                        {t.owner && <span style={{ fontWeight: 500 }}>{t.owner}</span>}
+                        {t.dueDate && <span style={{ color: T.text.muted }}>{t.dueDate}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Step progress indicator */}
+        {step < 6 && (
+          <div style={{ display: "flex", gap: 4, justifyContent: "center", paddingTop: 12, borderTop: `1px solid ${T.border.light}` }}>
+            {["Goal", "Findings", "Problem", "Root Cause", "Measures", "Tasks", "Review"].map((s, i) => (
+              <div key={i} style={{
+                fontSize: 8, fontWeight: 600, padding: "3px 8px", borderRadius: 10,
+                background: i <= step ? T.accent.blue : T.bg.light,
+                color: i <= step ? T.text.inverse : T.text.muted,
+                transition: "all 0.3s",
+              }}>{s}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══ JUNCTION PANEL ═══ */
 function JunctionPanel({ onSelect, goals }) {
   const goalFindings = [
