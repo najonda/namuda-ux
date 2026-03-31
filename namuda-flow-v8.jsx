@@ -4218,6 +4218,531 @@ function ImprovementPlanPanel({ goal, findings, problemStatement, whyTree, rootC
   );
 }
 
+/* ═══ IMPROVEMENT VIEW — full 6-step improvement flow ═══ */
+function ImprovementView({ storedFindings, onBack }) {
+  const [impStep, setImpStep] = useState(0); // 0=goal, 1=group, 2=problem, 3=whys, 4=measures, 5=tasks, 6=review
+  const [selectedGoal, setSelectedGoal] = useState(null);
+  const [impFindings, setImpFindings] = useState([]);
+  const [problemStatement, setProblemStatement] = useState("");
+  const [whyTree, setWhyTree] = useState([]); // [{answer, tag, evidence?}]
+  const [rootCause, setRootCause] = useState("");
+  const [counterMeasures, setCounterMeasures] = useState([]);
+  const [evidenceCards, setEvidenceCards] = useState([]);
+  const [currentEvidence, setCurrentEvidence] = useState(null);
+  const [blobText, setBlobText] = useState("");
+  const [blob, setBlob] = useState("waiting");
+  const [activeChoice, setActiveChoice] = useState(null);
+  const [refineState, setRefineState] = useState(null);
+  const [whyLevel, setWhyLevel] = useState(0);
+  const [whyPath, setWhyPath] = useState([]);
+  const [currentWhyData, setCurrentWhyData] = useState(null);
+  const [currentCmIdx, setCurrentCmIdx] = useState(0);
+
+  const primaryFinding = impFindings.length > 0 ? impFindings[0] : null;
+
+  // Step 0 — Select Goal
+  useEffect(() => {
+    if (impStep !== 0) return;
+    setBlob("waiting");
+    setBlobText("Which goal would you like to improve?");
+    // Build goal options from storedFindings by grouping findings by goalLink
+    const goalMap = {};
+    storedFindings.forEach(fid => {
+      const f = CANVAS_FINDINGS.find(cf => cf.id === fid);
+      if (f) {
+        if (!goalMap[f.goalLink]) goalMap[f.goalLink] = [];
+        goalMap[f.goalLink].push(fid);
+      }
+    });
+    const goalOptions = Object.keys(goalMap).map(gName => ({
+      label: gName,
+      desc: `${goalMap[gName].length} finding${goalMap[gName].length > 1 ? "s" : ""} linked`,
+    }));
+    if (goalOptions.length === 0) {
+      setBlobText("No findings stored yet. Go back and explore the canvas first.");
+      return;
+    }
+    setActiveChoice({
+      question: "Which goal should we work on improving?",
+      options: goalOptions,
+      onSelect: (idx) => {
+        const goalName = goalOptions[idx >= 0 && idx < goalOptions.length ? idx : 0]?.label || goalOptions[0].label;
+        const findingsForGoal = goalMap[goalName] || [];
+        // Build a goal-like object for ImprovementPlanPanel
+        const impact = GOAL_IMPACT[findingsForGoal[0]];
+        setSelectedGoal({
+          n: goalName,
+          b: impact ? impact.from : "—",
+          t: impact ? impact.to : "—",
+        });
+        setImpFindings(findingsForGoal);
+        setActiveChoice(null);
+        setImpStep(1);
+      },
+    });
+  }, [impStep]);
+
+  // Step 1 — Group Findings
+  useEffect(() => {
+    if (impStep !== 1) return;
+    setBlob("thinking");
+    if (impFindings.length <= 1) {
+      // Only 1 finding — skip grouping
+      setBlobText("One finding linked to this goal. Let's define the problem.");
+      setTimeout(() => { setBlob("waiting"); setImpStep(2); }, 800);
+      return;
+    }
+    // Use FINDING_GROUPING data
+    const goalName = selectedGoal?.n;
+    const grouping = FINDING_GROUPING[goalName];
+    if (!grouping) {
+      setBlobText("Multiple findings found. Let's proceed with all of them.");
+      setTimeout(() => { setBlob("waiting"); setImpStep(2); }, 800);
+      return;
+    }
+    setBlobText(grouping.combined
+      ? "These findings look related. I'd recommend combining them into a single improvement."
+      : "These findings point to different root causes. I'd recommend tackling them separately.");
+    const options = grouping.combined
+      ? [
+          { label: "Combine into one improvement", desc: grouping.reason },
+          { label: "Tackle separately", desc: "Start with the highest-severity finding" },
+        ]
+      : [
+          { label: "Tackle separately", desc: grouping.reason },
+          { label: "Combine into one improvement", desc: "Address them as a single improvement" },
+        ];
+    setActiveChoice({
+      question: "How should we approach these findings?",
+      options,
+      onSelect: (idx) => {
+        const shouldCombine = grouping.combined ? idx === 0 : idx === 1;
+        if (!shouldCombine) {
+          // Pick highest severity one
+          const sorted = [...impFindings].sort((a, b) => {
+            const sevOrder = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+            const fa = CANVAS_FINDINGS.find(cf => cf.id === a);
+            const fb = CANVAS_FINDINGS.find(cf => cf.id === b);
+            return (sevOrder[fa?.severity] || 3) - (sevOrder[fb?.severity] || 3);
+          });
+          setImpFindings([sorted[0]]);
+        }
+        setActiveChoice(null);
+        setBlob("waiting");
+        setImpStep(2);
+      },
+    });
+    setBlob("waiting");
+  }, [impStep]);
+
+  // Step 2 — Problem Statement
+  useEffect(() => {
+    if (impStep !== 2) return;
+    if (!primaryFinding) return;
+    setBlob("thinking");
+    const draft = PROBLEM_STATEMENTS[primaryFinding];
+    if (!draft) {
+      setBlobText("Let's define the problem statement.");
+      setTimeout(() => { setBlob("waiting"); setImpStep(3); }, 800);
+      return;
+    }
+    setBlobText("Here's a draft problem statement based on the data:");
+    // Set initial evidence from the first why-tree option
+    const whyData = WHY_TREE_DATA[primaryFinding];
+    if (whyData && whyData[0]?.options) {
+      const firstDataOpt = whyData[0].options.find(o => o.evidence);
+      if (firstDataOpt) setCurrentEvidence(firstDataOpt.evidence);
+    }
+    setRefineState({
+      originalQuestion: "Problem statement",
+      userSuggestion: CANVAS_FINDINGS.find(cf => cf.id === primaryFinding)?.summary || "",
+      aiProposal: draft,
+      onAccept: () => {
+        setProblemStatement(draft);
+        setRefineState(null);
+        setBlob("waiting");
+        setImpStep(3);
+      },
+      onRefine: (refined) => {
+        setProblemStatement(refined);
+        setRefineState(null);
+        setBlob("waiting");
+        setImpStep(3);
+      },
+      onCancel: () => {
+        setRefineState(null);
+        setBlob("waiting");
+        setImpStep(3);
+      },
+    });
+    setBlob("waiting");
+  }, [impStep, primaryFinding]);
+
+  // Step 3 — Root Cause Analysis (Why Tree)
+  useEffect(() => {
+    if (impStep !== 3) return;
+    if (!primaryFinding) return;
+    setBlob("thinking");
+    const whyData = WHY_TREE_DATA[primaryFinding];
+    if (!whyData || whyData.length === 0) {
+      setBlobText("No root cause data available. Moving to countermeasures.");
+      setTimeout(() => { setBlob("waiting"); setImpStep(4); }, 800);
+      return;
+    }
+    // Initialize why tree navigation
+    const firstLevel = whyData[0];
+    setCurrentWhyData(firstLevel);
+    setWhyLevel(0);
+    setWhyPath([]);
+    setBlobText("Let's find the root cause. Why does this problem happen?");
+    showWhyQuestion(firstLevel);
+    setBlob("waiting");
+  }, [impStep, primaryFinding]);
+
+  function showWhyQuestion(levelData) {
+    if (!levelData) return;
+    // If this level has a rootCause, propose it
+    if (levelData.rootCause) {
+      setBlobText("I think we've found the root cause:");
+      setActiveChoice(null);
+      setRefineState({
+        originalQuestion: "Root cause",
+        userSuggestion: whyTree.length > 0 ? whyTree[whyTree.length - 1].answer : "",
+        aiProposal: levelData.rootCause,
+        onAccept: () => {
+          setRootCause(levelData.rootCause);
+          setRefineState(null);
+          setBlob("waiting");
+          setImpStep(4);
+        },
+        onRefine: (refined) => {
+          setRootCause(refined);
+          setRefineState(null);
+          setBlob("waiting");
+          setImpStep(4);
+        },
+        onCancel: () => {
+          setRefineState(null);
+          setBlob("waiting");
+          setImpStep(4);
+        },
+      });
+      return;
+    }
+    // Show question as ChoiceWidget
+    const options = levelData.options.map(opt => ({
+      label: opt.label,
+      desc: opt.desc || (opt.tag === "data" ? "Supported by data" : ""),
+    }));
+    setActiveChoice({
+      question: levelData.question,
+      options,
+      onSelect: (idx) => {
+        const chosen = levelData.options[idx >= 0 && idx < levelData.options.length ? idx : 0] || levelData.options[0];
+        // Add to why tree
+        const newNode = { answer: chosen.label, tag: chosen.tag };
+        if (chosen.evidence) {
+          newNode.evidence = chosen.evidence;
+          setCurrentEvidence(chosen.evidence);
+          if (!evidenceCards.includes(chosen.evidence)) {
+            setEvidenceCards(prev => [...prev, chosen.evidence]);
+          }
+        }
+        setWhyTree(prev => [...prev, newNode]);
+        setActiveChoice(null);
+        // Navigate deeper
+        const nextLevel = levelData.next?.[chosen.key];
+        if (nextLevel) {
+          setWhyLevel(prev => prev + 1);
+          setWhyPath(prev => [...prev, chosen.key]);
+          setCurrentWhyData(nextLevel);
+          showWhyQuestion(nextLevel);
+        } else {
+          // No more levels — if there's a rootCause at this level, propose it
+          if (levelData.rootCause) {
+            setRootCause(levelData.rootCause);
+          }
+          setBlobText("We've traced the cause as deep as the data allows. Let's move to countermeasures.");
+          setBlob("waiting");
+          setTimeout(() => setImpStep(4), 1200);
+        }
+      },
+    });
+  }
+
+  // Step 4 — Countermeasures
+  useEffect(() => {
+    if (impStep !== 4) return;
+    if (!primaryFinding) return;
+    setBlob("thinking");
+    const cmData = COUNTERMEASURE_DATA[primaryFinding];
+    if (!cmData || cmData.length === 0) {
+      setBlobText("No countermeasure suggestions available. Moving to review.");
+      setTimeout(() => { setBlob("waiting"); setImpStep(6); }, 800);
+      return;
+    }
+    setBlobText("Here are recommended countermeasures. Select the ones you want to pursue:");
+    setCounterMeasures(cmData.map(cm => ({ ...cm, selected: cm.defaultSelected })));
+    setActiveChoice({
+      question: "Which countermeasures should we pursue?",
+      options: cmData.map(cm => ({
+        label: cm.desc,
+        desc: `Impact: ${cm.impact} · Effort: ${cm.effort}`,
+      })),
+      // For step 4, we use toggle-style selection rather than single-select
+      onSelect: (idx) => {
+        if (idx >= 0 && idx < cmData.length) {
+          setCounterMeasures(prev => prev.map((cm, i) => i === idx ? { ...cm, selected: !cm.selected } : cm));
+        }
+        // Don't auto-advance — user clicks "Accept selected" button
+      },
+    });
+    setBlob("waiting");
+  }, [impStep, primaryFinding]);
+
+  function acceptCountermeasures() {
+    setActiveChoice(null);
+    setCurrentCmIdx(0);
+    setImpStep(5);
+  }
+
+  // Step 5 — Task Assignment (inline form, no useEffect trigger needed beyond step change)
+  const selectedCms = counterMeasures.filter(cm => cm.selected);
+  const currentCm = selectedCms[currentCmIdx];
+
+  function handleTaskUpdate(cmId, taskIdx, field, value) {
+    setCounterMeasures(prev => prev.map(cm => {
+      if (cm.id !== cmId) return cm;
+      return {
+        ...cm,
+        tasks: cm.tasks.map((t, ti) => ti === taskIdx ? { ...t, [field]: value } : t),
+      };
+    }));
+  }
+
+  function advanceTaskStep() {
+    if (currentCmIdx < selectedCms.length - 1) {
+      setCurrentCmIdx(prev => prev + 1);
+    } else {
+      setActiveChoice(null);
+      setImpStep(6);
+    }
+  }
+
+  // Step 5 blob text
+  useEffect(() => {
+    if (impStep !== 5) return;
+    setBlob("waiting");
+    if (currentCm) {
+      setBlobText(`Assign tasks for: ${currentCm.desc}`);
+    } else {
+      setBlobText("All countermeasures assigned. Let's review.");
+      setTimeout(() => setImpStep(6), 800);
+    }
+  }, [impStep, currentCmIdx]);
+
+  // Step 6 — Review & Save
+  useEffect(() => {
+    if (impStep !== 6) return;
+    setBlob("idle");
+    setBlobText("Your improvement plan is complete! Ready to save?");
+    setActiveChoice({
+      question: "What would you like to do?",
+      options: [
+        { label: "Save improvement", desc: "Save and return to the canvas" },
+        { label: "Make changes", desc: "Go back and adjust the plan" },
+      ],
+      onSelect: (idx) => {
+        if (idx === 0) {
+          setActiveChoice(null);
+          setBlob("idle");
+          setBlobText("Improvement saved! Great work.");
+          setTimeout(() => onBack(), 1500);
+        } else {
+          // Go back to step 4 to re-select countermeasures
+          setActiveChoice(null);
+          setImpStep(4);
+        }
+      },
+    });
+  }, [impStep]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", fontFamily: T.font, overflow: "hidden" }}>
+      <DotBackground isDark={false} />
+
+      <div style={{ position: "relative", flex: 1, zIndex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Left panel — ImprovementPlanPanel */}
+        {impStep >= 1 && (
+          <ImprovementPlanPanel
+            goal={selectedGoal}
+            findings={impFindings}
+            problemStatement={problemStatement}
+            whyTree={whyTree}
+            rootCause={rootCause}
+            counterMeasures={counterMeasures}
+            evidenceCards={evidenceCards}
+            step={impStep}
+          />
+        )}
+
+        {/* Right panel — EvidencePanel */}
+        {currentEvidence && (
+          <EvidencePanel
+            evidenceKey={currentEvidence}
+            onAddToPlan={(key) => {
+              if (!evidenceCards.includes(key)) setEvidenceCards(prev => [...prev, key]);
+            }}
+            addedKeys={evidenceCards}
+          />
+        )}
+
+        {/* Center — Blob */}
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          flex: 1, pointerEvents: "none",
+        }}>
+          <Blob state={blob} size={180} />
+          <BlobSpeech text={blobText} />
+        </div>
+
+        {/* Bottom — Chat modal area */}
+        <div style={{
+          position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
+          width: "100%", maxWidth: 520, zIndex: 20, pointerEvents: "auto",
+        }}>
+          <div style={{
+            background: T.bg.surface, borderRadius: T.radius.lg,
+            boxShadow: T.shadow.lg, overflow: "hidden",
+          }}>
+            {/* ChoiceWidget */}
+            {activeChoice && (
+              <ChoiceWidget
+                question={activeChoice.question}
+                options={activeChoice.options}
+                onSelect={(idx, label) => activeChoice.onSelect(idx, label)}
+                allowCustom={impStep !== 4 && impStep !== 6}
+              />
+            )}
+
+            {/* RefineDialogue */}
+            {refineState && (
+              <RefineDialogue
+                originalQuestion={refineState.originalQuestion}
+                userSuggestion={refineState.userSuggestion}
+                aiProposal={refineState.aiProposal}
+                onAccept={refineState.onAccept}
+                onRefine={refineState.onRefine}
+                onCancel={refineState.onCancel}
+              />
+            )}
+
+            {/* Step 4: Accept selected countermeasures button */}
+            {impStep === 4 && activeChoice && (
+              <div style={{ padding: "8px 24px 16px" }}>
+                <button
+                  onClick={acceptCountermeasures}
+                  style={{
+                    width: "100%", padding: "12px 0", fontSize: 13, fontWeight: 600,
+                    fontFamily: T.font, background: T.accent.blue, color: T.text.inverse,
+                    border: "none", borderRadius: T.radius.sm, cursor: "pointer",
+                    transition: "opacity 0.2s",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = "0.9"}
+                  onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+                >
+                  Accept selected ({counterMeasures.filter(cm => cm.selected).length})
+                </button>
+              </div>
+            )}
+
+            {/* Step 5: Task assignment form */}
+            {impStep === 5 && currentCm && (
+              <div style={{ padding: "16px 24px" }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+                  Assign tasks — {currentCm.desc}
+                </div>
+                <div style={{ fontSize: 9, color: T.text.muted, marginBottom: 12 }}>
+                  Countermeasure {currentCmIdx + 1} of {selectedCms.length}
+                </div>
+                {currentCm.tasks.map((task, ti) => (
+                  <div key={ti} style={{ marginBottom: 12, padding: "10px 12px", borderRadius: T.radius.sm, background: T.bg.light, border: `1px solid ${T.border.light}` }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text.primary, marginBottom: 8 }}>
+                      {task.name}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: T.text.muted, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.3px" }}>Owner</div>
+                        <input
+                          value={task.owner || ""}
+                          onChange={e => handleTaskUpdate(currentCm.id, ti, "owner", e.target.value)}
+                          placeholder={task.suggestedOwner || "Assign owner..."}
+                          style={{
+                            width: "100%", padding: "7px 10px", fontSize: 12,
+                            fontFamily: T.font, border: `1px solid ${T.border.light}`,
+                            borderRadius: T.radius.xs, outline: "none", background: T.bg.surface,
+                            color: T.text.primary, boxSizing: "border-box",
+                          }}
+                          onFocus={e => e.target.style.borderColor = T.border.accent}
+                          onBlur={e => e.target.style.borderColor = T.border.light}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: T.text.muted, marginBottom: 3, textTransform: "uppercase", letterSpacing: "0.3px" }}>Due date</div>
+                        <input
+                          value={task.dueDate || ""}
+                          onChange={e => handleTaskUpdate(currentCm.id, ti, "dueDate", e.target.value)}
+                          placeholder="e.g. 2 weeks"
+                          style={{
+                            width: "100%", padding: "7px 10px", fontSize: 12,
+                            fontFamily: T.font, border: `1px solid ${T.border.light}`,
+                            borderRadius: T.radius.xs, outline: "none", background: T.bg.surface,
+                            color: T.text.primary, boxSizing: "border-box",
+                          }}
+                          onFocus={e => e.target.style.borderColor = T.border.accent}
+                          onBlur={e => e.target.style.borderColor = T.border.light}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={advanceTaskStep}
+                  style={{
+                    width: "100%", padding: "10px 0", fontSize: 13, fontWeight: 600,
+                    fontFamily: T.font, background: T.accent.blue, color: T.text.inverse,
+                    border: "none", borderRadius: T.radius.sm, cursor: "pointer",
+                    marginTop: 4,
+                  }}
+                >
+                  {currentCmIdx < selectedCms.length - 1 ? "Save and continue" : "Save and review"}
+                </button>
+              </div>
+            )}
+
+            {/* No active widget — show back button */}
+            {!activeChoice && !refineState && impStep !== 5 && impStep !== 6 && (
+              <div style={{ padding: "12px 24px" }}>
+                <button
+                  onClick={onBack}
+                  style={{
+                    padding: "8px 16px", fontSize: 12, fontWeight: 500,
+                    fontFamily: T.font, background: "none", color: T.text.muted,
+                    border: `1px solid ${T.border.light}`, borderRadius: T.radius.sm,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Back to canvas
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ JUNCTION PANEL ═══ */
 function JunctionPanel({ onSelect, goals }) {
   const goalFindings = [
@@ -4880,7 +5405,7 @@ export default function App() {
       setBlob("thinking");
       setTimeout(() => { setBlob("waiting"); setBlobText("Pick from the options — or tell me what you'd like to explore."); }, 500);
 
-    } else if (phase === "tour" || phase === "canvas") {
+    } else if (phase === "tour" || phase === "canvas" || phase === "improvement") {
       // No text input handling for these phases
     } else if (phase === "done" || phase === "goal-dive") {
       setBlob("thinking");
@@ -5418,8 +5943,11 @@ export default function App() {
       {/* Canvas view — full screen */}
       {phase === "canvas" && <CanvasView storedFindings={storedFindings} setStoredFindings={setStoredFindings} onStartImprovement={() => setPhase("improvement")} />}
 
+      {/* Improvement view — full screen */}
+      {phase === "improvement" && <ImprovementView storedFindings={storedFindings} onBack={() => setPhase("canvas")} />}
+
       {/* Body */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative", ...(phase === "tour" || phase === "canvas" ? { display: "none" } : {}) }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative", ...(phase === "tour" || phase === "canvas" || phase === "improvement" ? { display: "none" } : {}) }}>
 
         {/* DATA PROFILE — left side panel */}
         {panel === "data-profile" && (
