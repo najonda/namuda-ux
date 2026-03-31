@@ -3994,6 +3994,106 @@ function CanvasView({ storedFindings, setStoredFindings, onStartImprovement }) {
   );
 }
 
+/* ═══ EVIDENCE PANEL (right side, improvement flow) ═══ */
+function EvidencePanel({ evidenceKey, onAddToPlan, addedKeys }) {
+  const ev = evidenceKey ? EVIDENCE_VISUALS[evidenceKey] : null;
+  if (!ev) return null;
+  const isAdded = addedKeys.includes(evidenceKey);
+
+  const renderChart = () => {
+    if (ev.type === "bar") {
+      const maxVal = Math.max(...ev.data.map(d => d.value));
+      return (
+        <div style={{ padding: "0 4px" }}>
+          {ev.data.map((d, i) => (
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 10, color: T.text.secondary, fontWeight: 500 }}>{d.label}</span>
+                <span style={{ fontSize: 10, color: T.text.primary, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{d.value.toLocaleString()}{ev.unit === "%" ? "%" : ""}</span>
+              </div>
+              <div style={{ height: 8, background: T.bg.light, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${(d.value / maxVal) * 100}%`, height: "100%", background: d.color, borderRadius: 4, transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)" }} />
+              </div>
+            </div>
+          ))}
+          <div style={{ fontSize: 9, color: T.text.muted, textAlign: "right", marginTop: 2 }}>{ev.unit}</div>
+        </div>
+      );
+    }
+    if (ev.type === "histogram") {
+      const maxVal = Math.max(...ev.data);
+      return (
+        <div>
+          <svg width="100%" viewBox={`0 0 ${ev.data.length * 32} 60`} style={{ display: "block" }}>
+            {ev.data.map((v, i) => (
+              <g key={i}>
+                <rect x={i * 32 + 2} y={60 - (v / maxVal) * 52} width={28} height={(v / maxVal) * 52} rx={3} fill={T.accent.blue} opacity={0.7 + (v / maxVal) * 0.3} />
+                <text x={i * 32 + 16} y={58} textAnchor="middle" fontSize="7" fill={T.text.muted}>{ev.labels?.[i] || ""}</text>
+              </g>
+            ))}
+          </svg>
+          <div style={{ fontSize: 9, color: T.text.muted, textAlign: "right" }}>{ev.unit}</div>
+        </div>
+      );
+    }
+    if (ev.type === "line") {
+      const maxVal = Math.max(...ev.data), minVal = Math.min(...ev.data);
+      const range = maxVal - minVal || 1;
+      const w = ev.data.length * 40, h = 60;
+      const points = ev.data.map((v, i) => `${i * 40 + 20},${h - ((v - minVal) / range) * 48 - 6}`).join(" ");
+      return (
+        <div>
+          <svg width="100%" viewBox={`0 0 ${w} ${h + 12}`} style={{ display: "block" }}>
+            <polyline points={points} fill="none" stroke={T.accent.blue} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            {ev.data.map((v, i) => (
+              <g key={i}>
+                <circle cx={i * 40 + 20} cy={h - ((v - minVal) / range) * 48 - 6} r="3" fill={T.accent.blue} />
+                <text x={i * 40 + 20} y={h + 10} textAnchor="middle" fontSize="7" fill={T.text.muted}>{ev.labels?.[i] || ""}</text>
+              </g>
+            ))}
+          </svg>
+          <div style={{ fontSize: 9, color: T.text.muted, textAlign: "right" }}>{ev.unit}</div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div style={{
+      position: "absolute", top: 16, right: 16, width: 300, bottom: 80,
+      background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)",
+      borderRadius: T.radius.lg, boxShadow: T.shadow.lg,
+      border: `1px solid ${T.border.light}`,
+      zIndex: 15, overflow: "hidden", display: "flex", flexDirection: "column",
+      animation: "chatSlideIn 0.3s ease",
+    }}>
+      <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${T.border.light}` }}>
+        <div style={{ fontSize: 9, fontWeight: 600, color: T.text.muted, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>Supporting evidence</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, lineHeight: 1.4 }}>{ev.title}</div>
+      </div>
+      <div style={{ padding: "14px 16px", flex: 1, overflowY: "auto" }}>
+        <div style={{ fontSize: 10, color: T.accent.blue, fontWeight: 500, marginBottom: 12, padding: "4px 8px", background: `${T.accent.blue}08`, borderRadius: 4, borderLeft: `2px solid ${T.accent.blue}` }}>
+          Evidence for: {ev.contextLabel}
+        </div>
+        {renderChart()}
+      </div>
+      <div style={{ padding: "10px 16px", borderTop: `1px solid ${T.border.light}` }}>
+        <button onClick={() => !isAdded && onAddToPlan(evidenceKey)} style={{
+          width: "100%", padding: "8px 0", fontSize: 11, fontWeight: 600,
+          background: isAdded ? T.bg.light : T.accent.blue,
+          color: isAdded ? T.accent.blue : T.text.inverse,
+          border: isAdded ? `1px solid ${T.border.accent}` : "none",
+          borderRadius: T.radius.sm, cursor: isAdded ? "default" : "pointer",
+          fontFamily: T.font, transition: "all 0.2s",
+        }}>
+          {isAdded ? "Added \u2713" : "Add to plan"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ JUNCTION PANEL ═══ */
 function JunctionPanel({ onSelect, goals }) {
   const goalFindings = [
