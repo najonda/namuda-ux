@@ -2675,6 +2675,410 @@ const CANVAS_FINDINGS = [
     summary: "PM1 achieves 7.7d throughput while PN1 takes 34d — a 4.4x gap between best and worst performing sites across the same process.",
     recommendation: "Benchmark PM1 practices. Investigate PN1 bottlenecks. Standardize the top-performing approach across all 17 sites." },
 ];
+
+/* ═══ IMPROVEMENT FLOW DATA ═══ */
+
+const WHY_TREE_DATA = {
+  "bottleneck-lcp": [
+    {
+      question: "Why does the confirmation print take 5.7 days?",
+      options: [
+        { key: "manual", label: "Manual verification is required for each order", tag: "data", evidence: "path-breakdown", desc: "92% of cases go through manual path" },
+        { key: "vendor", label: "Waiting for vendor response before confirmation", tag: "data", evidence: "vendor-wait", desc: "Avg 3.2d wait when vendor is involved" },
+        { key: "staff", label: "Understaffing in confirmation department", tag: "hypothesis" },
+      ],
+      next: {
+        "manual": {
+          question: "Why is manual verification required?",
+          options: [
+            { key: "no-rules", label: "No automated validation rules exist", tag: "data", evidence: "site-comparison", desc: "Sites with partial automation: 1.2d vs 5.7d" },
+            { key: "complex", label: "Product specifications too complex for automation", tag: "hypothesis" },
+            { key: "compliance", label: "Regulatory compliance requires human sign-off", tag: "hypothesis" },
+          ],
+          next: {
+            "no-rules": {
+              question: "Why are there no automated validation rules?",
+              options: [
+                { key: "legacy", label: "Legacy ERP doesn't support rule-based confirmation", tag: "hypothesis" },
+                { key: "priority", label: "Automation was never prioritized — impact wasn't visible", tag: "hypothesis" },
+                { key: "specs", label: "Product specs too varied for a rule set", tag: "hypothesis" },
+              ],
+              next: {
+                "legacy": {
+                  question: "Why hasn't the ERP been updated?",
+                  options: [
+                    { key: "cost", label: "Upgrade costs deemed too high relative to perceived benefit", tag: "hypothesis" },
+                    { key: "risk", label: "Fear of disrupting a working system", tag: "hypothesis" },
+                  ],
+                  rootCause: "Legacy ERP limitations combined with lack of visibility into the bottleneck's true cost prevented automation investment.",
+                },
+                "priority": {
+                  question: "Why wasn't the impact visible?",
+                  options: [
+                    { key: "no-pm", label: "No process mining — impact was invisible", tag: "data", evidence: "throughput-trend", desc: "Problem growing 12% year-over-year" },
+                    { key: "silos", label: "Teams measured in silos — no end-to-end view", tag: "hypothesis" },
+                  ],
+                  rootCause: "Lack of end-to-end process visibility prevented prioritization of confirmation automation, leaving a manual bottleneck that adds 5.7d to every case.",
+                },
+                "specs": {
+                  question: "Why are product specs so varied?",
+                  options: [
+                    { key: "custom", label: "High proportion of custom orders", tag: "data", evidence: "order-type-breakdown", desc: "62% custom vs 38% standard" },
+                    { key: "legacy-cat", label: "Legacy product catalog never consolidated", tag: "hypothesis" },
+                  ],
+                  rootCause: "High product customization rate (62%) combined with no standardized validation framework makes automation infeasible without catalog consolidation.",
+                },
+              },
+            },
+            "complex": {
+              question: "Why are specs too complex for automation?",
+              options: [
+                { key: "custom", label: "High custom order rate with unique requirements", tag: "data", evidence: "order-type-breakdown", desc: "62% custom orders" },
+                { key: "docs", label: "Specifications not machine-readable", tag: "hypothesis" },
+              ],
+              rootCause: "Product specifications lack machine-readable structure, preventing rule-based validation of the 62% custom orders.",
+            },
+            "compliance": {
+              question: "Why does compliance require human sign-off?",
+              options: [
+                { key: "regulation", label: "Industry regulation mandates manual approval", tag: "hypothesis" },
+                { key: "internal", label: "Internal policy — never re-evaluated", tag: "hypothesis" },
+              ],
+              rootCause: "Outdated internal compliance policy requires human sign-off without evidence that regulation mandates it.",
+            },
+          },
+        },
+        "vendor": {
+          question: "Why does vendor response take 3.2 days on average?",
+          options: [
+            { key: "no-portal", label: "No self-service portal — all communication via email", tag: "data", evidence: "vendor-channels", desc: "94% of vendor interactions are email" },
+            { key: "batching", label: "Vendors batch responses weekly", tag: "hypothesis" },
+          ],
+          rootCause: "Vendor communication relies on manual email (94% of interactions) with no automated tracking or escalation, creating a 3.2d information bottleneck.",
+        },
+        "staff": {
+          question: "Why is the department understaffed?",
+          options: [
+            { key: "turnover", label: "High turnover due to repetitive manual work", tag: "hypothesis" },
+            { key: "budget", label: "Headcount frozen as cost-cutting measure", tag: "hypothesis" },
+          ],
+          rootCause: "Headcount constraints combined with repetitive manual work drive turnover, creating a staffing bottleneck in the confirmation department.",
+        },
+      },
+    },
+  ],
+  "rework-approved": [
+    {
+      question: "Why do 10,009 cases cycle back through approval?",
+      options: [
+        { key: "spec-change", label: "Specification changes after initial approval", tag: "data", evidence: "rework-trigger", desc: "73% of rework triggered by spec changes" },
+        { key: "vendor-mod", label: "Vendor modifications require re-approval", tag: "data", evidence: "vendor-rework", desc: "2,800 cases from vendor-initiated changes" },
+        { key: "error", label: "Data entry errors caught after approval", tag: "hypothesis" },
+      ],
+      next: {
+        "spec-change": {
+          question: "Why do specifications change after approval?",
+          options: [
+            { key: "late-req", label: "Customer requirements arrive late in process", tag: "data", evidence: "req-timing", desc: "41% of changes within 48h of approval" },
+            { key: "incomplete", label: "Initial spec capture is incomplete", tag: "hypothesis" },
+            { key: "design-change", label: "Design team iterates post-approval", tag: "hypothesis" },
+          ],
+          next: {
+            "late-req": {
+              question: "Why do customer requirements arrive late?",
+              options: [
+                { key: "no-gate", label: "No hard gate — orders accepted without complete specs", tag: "data", evidence: "completeness-check", desc: "Only 28% of orders have complete specs at approval" },
+                { key: "sales", label: "Sales promises delivery before specs are finalized", tag: "hypothesis" },
+              ],
+              rootCause: "No completeness gate at order entry — only 28% of orders have complete specifications at approval, causing predictable rework when missing details surface.",
+            },
+            "incomplete": {
+              question: "Why is initial spec capture incomplete?",
+              options: [
+                { key: "form", label: "Order form doesn't enforce required fields", tag: "hypothesis" },
+                { key: "training", label: "Sales team not trained on technical requirements", tag: "hypothesis" },
+              ],
+              rootCause: "Order entry process lacks mandatory field validation, allowing incomplete specifications to enter the workflow and trigger rework at approval.",
+            },
+            "design-change": {
+              question: "Why does design iterate post-approval?",
+              options: [
+                { key: "parallel", label: "Design and procurement run in parallel, not sequence", tag: "hypothesis" },
+                { key: "feedback", label: "Approval feedback triggers design improvements", tag: "hypothesis" },
+              ],
+              rootCause: "Parallel design-procurement workflow means design changes naturally arrive after procurement approval, requiring re-approval cycles.",
+            },
+          },
+        },
+        "vendor-mod": {
+          question: "Why do vendors modify orders post-approval?",
+          options: [
+            { key: "availability", label: "Material availability changes after order", tag: "data", evidence: "vendor-changes", desc: "58% of vendor changes are substitutions" },
+            { key: "pricing", label: "Price renegotiation triggers spec adjustments", tag: "hypothesis" },
+          ],
+          rootCause: "Material substitutions (58% of vendor changes) are not pre-approved, forcing each substitution through the full re-approval cycle.",
+        },
+        "error": {
+          question: "Why are data entry errors caught post-approval?",
+          options: [
+            { key: "no-validation", label: "No real-time validation at data entry", tag: "hypothesis" },
+            { key: "manual", label: "Manual data entry from paper/email sources", tag: "hypothesis" },
+          ],
+          rootCause: "Lack of real-time validation at data entry allows errors to propagate to approval stage before detection.",
+        },
+      },
+    },
+  ],
+  "blocked-volume": [
+    {
+      question: "Why do 68% of cases pass through Blocked status?",
+      options: [
+        { key: "missing-info", label: "Missing information triggers automatic blocking", tag: "data", evidence: "block-reasons", desc: "45% blocked for missing documents" },
+        { key: "credit", label: "Credit hold on vendor or customer", tag: "data", evidence: "credit-blocks", desc: "28% blocked for credit reasons" },
+        { key: "inventory", label: "Stock unavailability triggers block", tag: "hypothesis" },
+      ],
+      next: {
+        "missing-info": {
+          question: "Why is information missing at the blocking point?",
+          options: [
+            { key: "upstream", label: "Upstream steps don't collect required documents", tag: "data", evidence: "doc-completeness", desc: "Only 35% document-complete at approval" },
+            { key: "timing", label: "Documents not available until later in process", tag: "hypothesis" },
+          ],
+          rootCause: "Document collection is not enforced upstream — only 35% of cases are document-complete at approval, guaranteeing most cases hit a blocking step.",
+        },
+        "credit": {
+          question: "Why do credit holds block so many cases?",
+          options: [
+            { key: "threshold", label: "Credit check thresholds too aggressive", tag: "hypothesis" },
+            { key: "stale", label: "Credit ratings not updated regularly", tag: "hypothesis" },
+          ],
+          rootCause: "Credit evaluation process uses stale data and aggressive thresholds, blocking cases that would pass with current information.",
+        },
+        "inventory": {
+          question: "Why does stock unavailability trigger blocks?",
+          options: [
+            { key: "forecast", label: "Poor demand forecasting", tag: "hypothesis" },
+            { key: "lead-time", label: "Long supplier lead times not accounted for", tag: "hypothesis" },
+          ],
+          rootCause: "Stock checks at order creation don't account for supplier lead times, causing orders to block when inventory isn't available at fulfillment time.",
+        },
+      },
+    },
+  ],
+  "site-variance": [
+    {
+      question: "Why is there a 4.4x throughput gap between best and worst sites?",
+      options: [
+        { key: "process", label: "Different sites use different process variants", tag: "data", evidence: "site-variants", desc: "PM1 uses 3 variants, PN1 uses 47 variants" },
+        { key: "volume", label: "Volume differences affect efficiency", tag: "data", evidence: "site-volume", desc: "PM1: 8,200 cases vs PN1: 420 cases" },
+        { key: "staffing", label: "Staffing levels differ significantly", tag: "hypothesis" },
+      ],
+      next: {
+        "process": {
+          question: "Why do sites use different process variants?",
+          options: [
+            { key: "no-standard", label: "No standardized process across sites", tag: "data", evidence: "variant-overlap", desc: "Only 12% variant overlap between sites" },
+            { key: "local", label: "Local adaptations accumulated over years", tag: "hypothesis" },
+          ],
+          rootCause: "No process standardization governance — sites independently evolved their workflows, creating 47 variants at worst-performing sites vs 3 at best.",
+        },
+        "volume": {
+          question: "Why does lower volume correlate with slower throughput?",
+          options: [
+            { key: "batch", label: "Low-volume sites batch work instead of continuous flow", tag: "hypothesis" },
+            { key: "expertise", label: "Less practice means less expertise", tag: "hypothesis" },
+          ],
+          rootCause: "Low-volume sites batch process work into weekly cycles rather than continuous flow, adding wait time that doesn't exist at high-volume sites.",
+        },
+        "staffing": {
+          question: "Why do staffing levels differ?",
+          options: [
+            { key: "allocation", label: "Staff allocated by headcount, not workload", tag: "hypothesis" },
+            { key: "retention", label: "Remote sites have higher turnover", tag: "hypothesis" },
+          ],
+          rootCause: "Staff allocation follows historical headcount rather than actual workload, leaving under-resourced sites with longer queue times.",
+        },
+      },
+    },
+  ],
+};
+
+const PROBLEM_STATEMENTS = {
+  "bottleneck-lcp": "The Last Confirmation Print step adds an average of 5.7 days to every case, creating the primary bottleneck in the procurement process and accounting for over 40% of total throughput time.",
+  "rework-approved": "The approval rework loop forces 10,009 cases through re-approval at 1.5 days per cycle, adding an average of 3.2 days to throughput and inflating the 52% rework rate.",
+  "blocked-volume": "68% of all cases pass through a Blocked status with a self-loop averaging 7.0 hours per cycle, creating a systemic chokepoint driven by incomplete upstream information.",
+  "site-variance": "A 4.4x throughput gap between the best-performing site (PM1 at 7.7d) and worst-performing site (PN1 at 34d) indicates significant process standardization opportunities.",
+};
+
+const EVIDENCE_VISUALS = {
+  "path-breakdown": {
+    title: "Confirmation path breakdown",
+    contextLabel: "Manual verification is required",
+    type: "bar",
+    data: [{ label: "Manual", value: 92, color: "#d4685a" }, { label: "Automated", value: 8, color: "#7bc67e" }],
+    unit: "%",
+  },
+  "vendor-wait": {
+    title: "Vendor response time",
+    contextLabel: "Waiting for vendor response",
+    type: "histogram",
+    data: [2, 5, 12, 22, 35, 28, 15, 8, 4, 2],
+    labels: ["0d", "1d", "2d", "3d", "4d", "5d", "6d", "7d", "8d", "9d+"],
+    unit: "cases",
+  },
+  "site-comparison": {
+    title: "Throughput: automated vs manual sites",
+    contextLabel: "No automated validation rules exist",
+    type: "bar",
+    data: [{ label: "With automation", value: 1.2, color: "#7bc67e" }, { label: "Without", value: 5.7, color: "#d4685a" }],
+    unit: "days",
+  },
+  "throughput-trend": {
+    title: "Confirmation time trend (3 years)",
+    contextLabel: "Impact was invisible",
+    type: "line",
+    data: [4.2, 4.5, 4.8, 5.0, 5.2, 5.4, 5.5, 5.7],
+    labels: ["Q1'24", "Q2'24", "Q3'24", "Q4'24", "Q1'25", "Q2'25", "Q3'25", "Q4'25"],
+    unit: "days",
+  },
+  "order-type-breakdown": {
+    title: "Order type distribution",
+    contextLabel: "High custom order rate",
+    type: "bar",
+    data: [{ label: "Custom", value: 62, color: "#e8a040" }, { label: "Standard", value: 38, color: "#7bc67e" }],
+    unit: "%",
+  },
+  "vendor-channels": {
+    title: "Vendor communication channels",
+    contextLabel: "All communication via email",
+    type: "bar",
+    data: [{ label: "Email", value: 94, color: "#d4685a" }, { label: "Portal", value: 4, color: "#7bc67e" }, { label: "Phone", value: 2, color: "#b4bcc8" }],
+    unit: "%",
+  },
+  "rework-trigger": {
+    title: "Rework triggers",
+    contextLabel: "Specification changes after approval",
+    type: "bar",
+    data: [{ label: "Spec change", value: 73, color: "#d4685a" }, { label: "Vendor mod", value: 19, color: "#e8a040" }, { label: "Error", value: 8, color: "#b4bcc8" }],
+    unit: "%",
+  },
+  "vendor-rework": {
+    title: "Vendor-initiated rework",
+    contextLabel: "Vendor modifications require re-approval",
+    type: "bar",
+    data: [{ label: "Substitution", value: 58, color: "#e8a040" }, { label: "Price change", value: 27, color: "#b4bcc8" }, { label: "Delay", value: 15, color: "#b4bcc8" }],
+    unit: "%",
+  },
+  "req-timing": {
+    title: "Requirement change timing",
+    contextLabel: "Customer requirements arrive late",
+    type: "histogram",
+    data: [41, 22, 15, 10, 7, 3, 2],
+    labels: ["<48h", "2-5d", "5-10d", "10-15d", "15-20d", "20-25d", "25d+"],
+    unit: "% of changes",
+  },
+  "completeness-check": {
+    title: "Spec completeness at approval",
+    contextLabel: "No hard gate for complete specs",
+    type: "bar",
+    data: [{ label: "Complete", value: 28, color: "#7bc67e" }, { label: "Incomplete", value: 72, color: "#d4685a" }],
+    unit: "%",
+  },
+  "block-reasons": {
+    title: "Blocking reasons",
+    contextLabel: "Missing information triggers blocking",
+    type: "bar",
+    data: [{ label: "Missing docs", value: 45, color: "#d4685a" }, { label: "Credit hold", value: 28, color: "#e8a040" }, { label: "Stock", value: 18, color: "#b4bcc8" }, { label: "Other", value: 9, color: "#b4bcc8" }],
+    unit: "%",
+  },
+  "credit-blocks": {
+    title: "Credit block resolution time",
+    contextLabel: "Credit hold on vendor or customer",
+    type: "histogram",
+    data: [15, 25, 32, 18, 8, 2],
+    labels: ["<1h", "1-4h", "4-12h", "12-24h", "1-3d", "3d+"],
+    unit: "cases",
+  },
+  "doc-completeness": {
+    title: "Document completeness at approval",
+    contextLabel: "Upstream steps don't collect documents",
+    type: "bar",
+    data: [{ label: "Complete", value: 35, color: "#7bc67e" }, { label: "Partial", value: 42, color: "#e8a040" }, { label: "Missing", value: 23, color: "#d4685a" }],
+    unit: "%",
+  },
+  "site-variants": {
+    title: "Process variants by site",
+    contextLabel: "Different process variants per site",
+    type: "bar",
+    data: [{ label: "PM1", value: 3, color: "#7bc67e" }, { label: "PM2", value: 8, color: "#e8a040" }, { label: "PN1", value: 47, color: "#d4685a" }, { label: "PN2", value: 22, color: "#e8a040" }],
+    unit: "variants",
+  },
+  "site-volume": {
+    title: "Case volume by site",
+    contextLabel: "Volume differences affect efficiency",
+    type: "bar",
+    data: [{ label: "PM1", value: 8200, color: "#7bc67e" }, { label: "PM2", value: 4100, color: "#e8a040" }, { label: "PN1", value: 420, color: "#d4685a" }, { label: "PN2", value: 1800, color: "#b4bcc8" }],
+    unit: "cases",
+  },
+  "variant-overlap": {
+    title: "Variant overlap between sites",
+    contextLabel: "No standardized process across sites",
+    type: "bar",
+    data: [{ label: "Shared", value: 12, color: "#7bc67e" }, { label: "Site-specific", value: 88, color: "#d4685a" }],
+    unit: "%",
+  },
+  "vendor-changes": {
+    title: "Vendor change types",
+    contextLabel: "Material availability changes",
+    type: "bar",
+    data: [{ label: "Substitution", value: 58, color: "#e8a040" }, { label: "Lead time", value: 25, color: "#b4bcc8" }, { label: "Discontinuation", value: 17, color: "#d4685a" }],
+    unit: "%",
+  },
+};
+
+const COUNTERMEASURE_DATA = {
+  "bottleneck-lcp": [
+    { id: "cm-auto-validation", desc: "Implement automated validation rules for standard product specs", impact: "High", effort: "Medium", defaultSelected: true,
+      tasks: [{ name: "Define validation rule specifications", suggestedOwner: "Process team" }, { name: "Configure rules in ERP system", suggestedOwner: "IT team" }, { name: "Run pilot on PM1 site", suggestedOwner: "Site lead PM1" }] },
+    { id: "cm-fast-track", desc: "Create fast-track path for repeat orders (skip full confirmation)", impact: "Medium", effort: "Low", defaultSelected: true,
+      tasks: [{ name: "Identify repeat order criteria", suggestedOwner: "Process team" }, { name: "Design fast-track workflow", suggestedOwner: "Process team" }] },
+    { id: "cm-dashboard", desc: "Add real-time bottleneck dashboard for operations team", impact: "Medium", effort: "High", defaultSelected: false,
+      tasks: [{ name: "Define dashboard KPIs", suggestedOwner: "Operations" }, { name: "Build dashboard in BI tool", suggestedOwner: "IT team" }] },
+  ],
+  "rework-approved": [
+    { id: "cm-completeness-gate", desc: "Add mandatory completeness gate at order entry", impact: "High", effort: "Medium", defaultSelected: true,
+      tasks: [{ name: "Define required fields per order type", suggestedOwner: "Process team" }, { name: "Implement validation in order system", suggestedOwner: "IT team" }] },
+    { id: "cm-pre-approval", desc: "Pre-approve common vendor substitutions", impact: "Medium", effort: "Low", defaultSelected: true,
+      tasks: [{ name: "Catalog common substitutions by vendor", suggestedOwner: "Procurement" }, { name: "Create pre-approved substitution list", suggestedOwner: "Procurement" }] },
+    { id: "cm-spec-template", desc: "Standardize specification templates by product category", impact: "Medium", effort: "Medium", defaultSelected: false,
+      tasks: [{ name: "Audit existing spec formats", suggestedOwner: "Engineering" }, { name: "Create standardized templates", suggestedOwner: "Engineering" }] },
+  ],
+  "blocked-volume": [
+    { id: "cm-doc-upfront", desc: "Enforce document collection at order entry, not at approval", impact: "High", effort: "Medium", defaultSelected: true,
+      tasks: [{ name: "Map required documents per order type", suggestedOwner: "Process team" }, { name: "Add upload gates to order entry form", suggestedOwner: "IT team" }] },
+    { id: "cm-credit-refresh", desc: "Automate credit rating refresh to reduce false blocks", impact: "Medium", effort: "Low", defaultSelected: true,
+      tasks: [{ name: "Integrate credit API for live checks", suggestedOwner: "IT team" }, { name: "Adjust threshold based on historical false-positive rate", suggestedOwner: "Finance" }] },
+  ],
+  "site-variance": [
+    { id: "cm-standardize", desc: "Standardize process to PM1's 3-variant model across all sites", impact: "High", effort: "High", defaultSelected: true,
+      tasks: [{ name: "Document PM1 process in detail", suggestedOwner: "Site lead PM1" }, { name: "Gap analysis for each site", suggestedOwner: "Process team" }, { name: "Rollout plan with site-by-site timeline", suggestedOwner: "Program manager" }] },
+    { id: "cm-continuous-flow", desc: "Move low-volume sites from batch processing to continuous flow", impact: "Medium", effort: "Medium", defaultSelected: true,
+      tasks: [{ name: "Identify batch-processing sites", suggestedOwner: "Process team" }, { name: "Design continuous flow workflow", suggestedOwner: "Process team" }] },
+  ],
+};
+
+const FINDING_GROUPING = {
+  "Reduce throughput time": { combined: false, reason: "These findings point to different root causes — the confirmation bottleneck is an internal process issue, while the site variance is an organizational standardization issue. I'd recommend separate improvements, starting with the bottleneck." },
+  "Lower rework rate": { combined: true, reason: "These findings look related — excessive blocking often triggers the re-approval loop. Addressing them together will have a compound effect on the rework rate." },
+};
+
+const GOAL_IMPACT = {
+  "bottleneck-lcp": { metric: "throughput time", reduction: "2.3 days", from: "18.8d", to: "16.5d" },
+  "rework-approved": { metric: "rework rate", reduction: "15%", from: "52%", to: "37%" },
+  "blocked-volume": { metric: "rework rate", reduction: "8%", from: "52%", to: "44%" },
+  "site-variance": { metric: "throughput time", reduction: "3.1 days", from: "18.8d", to: "15.7d" },
+};
+
 const NODE_POPUP_DATA = {
   free: { throughputDist: [12,28,45,62,35,18,8], reworkRate: 15.6, sparkline: [20,35,28,42,38,45,32,40,36,44], issues: ["16% direct route to Blocked", "Low avg but high variance"] },
   approved: { throughputDist: [5,15,22,38,55,42,28,12], reworkRate: 19.2, sparkline: [30,42,38,55,48,52,45,58,50,47], issues: ["10,009 self-loop re-approvals", "Re-approval adds 1.5d per cycle"] },
