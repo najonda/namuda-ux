@@ -4061,7 +4061,7 @@ function EvidencePanel({ evidenceKey, onAddToPlan, addedKeys }) {
 
   return (
     <div style={{
-      position: "absolute", top: 16, right: 16, width: 300, bottom: 80,
+      position: "absolute", top: 16, left: 16, width: 300, bottom: 80,
       background: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)",
       borderRadius: T.radius.lg, boxShadow: T.shadow.lg,
       border: `1px solid ${T.border.light}`,
@@ -4098,7 +4098,7 @@ function EvidencePanel({ evidenceKey, onAddToPlan, addedKeys }) {
 function ImprovementPlanPanel({ goal, findings, problemStatement, whyTree, rootCause, counterMeasures, evidenceCards, step }) {
   return (
     <div style={{
-      position: "absolute", top: 16, left: 16, width: 460, bottom: 80,
+      position: "absolute", top: 16, right: 16, width: 460, bottom: 80,
       background: "rgba(255,255,255,0.97)", backdropFilter: "blur(12px)",
       borderRadius: T.radius.lg, boxShadow: T.shadow.lg,
       border: `1px solid ${T.border.light}`,
@@ -4220,7 +4220,7 @@ function ImprovementPlanPanel({ goal, findings, problemStatement, whyTree, rootC
 
 /* ═══ IMPROVEMENT VIEW — full 6-step improvement flow ═══ */
 function ImprovementView({ storedFindings, onBack }) {
-  const [impStep, setImpStep] = useState(0); // 0=goal, 1=group, 2=problem, 3=whys, 4=measures, 5=tasks, 6=review
+  const [impStep, setImpStep] = useState(-1); // -1=intro, 0=goal, 1=group, 2=problem, 3=whys, 4=measures, 5=tasks, 6=review
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [impFindings, setImpFindings] = useState([]);
   const [problemStatement, setProblemStatement] = useState("");
@@ -4230,7 +4230,7 @@ function ImprovementView({ storedFindings, onBack }) {
   const [evidenceCards, setEvidenceCards] = useState([]);
   const [currentEvidence, setCurrentEvidence] = useState(null);
   const [blobText, setBlobText] = useState("");
-  const [blob, setBlob] = useState("waiting");
+  const [blob, setBlob] = useState("thinking");
   const [activeChoice, setActiveChoice] = useState(null);
   const [refineState, setRefineState] = useState(null);
   const [whyLevel, setWhyLevel] = useState(0);
@@ -4239,6 +4239,21 @@ function ImprovementView({ storedFindings, onBack }) {
   const [currentCmIdx, setCurrentCmIdx] = useState(0);
 
   const primaryFinding = impFindings.length > 0 ? impFindings[0] : null;
+
+  // Step -1 — Intro: explain what an improvement plan is
+  useEffect(() => {
+    if (impStep !== -1) return;
+    setBlob("thinking");
+    setBlobText("You've collected strong evidence from the process data. Now it's time to turn findings into action.");
+    const t1 = setTimeout(() => {
+      setBlob("waiting");
+      setBlobText("An Improvement Plan is a structured document that connects what you found to what you'll do about it.\n\nWe'll walk through it together: define the problem, find the root cause, and agree on countermeasures with owners and deadlines.");
+    }, 2500);
+    const t2 = setTimeout(() => {
+      setImpStep(0);
+    }, 7500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [impStep]);
 
   // Step 0 — Select Goal
   useEffect(() => {
@@ -4583,24 +4598,20 @@ function ImprovementView({ storedFindings, onBack }) {
           />
         )}
 
-        {/* Center — Blob */}
+        {/* Center — Blob + interaction below */}
         <div style={{
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          flex: 1, pointerEvents: "none",
+          display: "flex", flexDirection: "column", alignItems: "center",
+          flex: 1, overflow: "auto", paddingTop: 60, paddingBottom: 24,
         }}>
-          <Blob state={blob} size={180} />
-          <BlobSpeech text={blobText} />
-        </div>
+          <div style={{ pointerEvents: "none", marginBottom: 16 }}>
+            <Blob state={blob} size={160} />
+          </div>
+          <div style={{ pointerEvents: "none", marginBottom: 24, maxWidth: 400, textAlign: "center" }}>
+            <BlobSpeech text={blobText} />
+          </div>
 
-        {/* Bottom — Chat modal area */}
-        <div style={{
-          position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
-          width: "100%", maxWidth: 520, zIndex: 20, pointerEvents: "auto",
-        }}>
-          <div style={{
-            background: T.bg.surface, borderRadius: T.radius.lg,
-            boxShadow: T.shadow.lg, overflow: "hidden",
-          }}>
+          {/* Interaction area — renders directly below blob, no card wrapper */}
+          <div style={{ width: "100%", maxWidth: 480 }}>
             {/* ChoiceWidget */}
             {activeChoice && (
               <ChoiceWidget
@@ -6234,7 +6245,7 @@ export default function App() {
       </div>
 
       {/* ─── BOTTOM INTERACTION AREA ─── */}
-      {phase !== "tour" && phase !== "canvas" && phase !== "junction" && (
+      {phase !== "tour" && phase !== "canvas" && phase !== "junction" && phase !== "improvement" && (
         <div style={{
           padding: "12px 28px 20px",
           display: "flex", flexDirection: "column", alignItems: "center",
